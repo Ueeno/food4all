@@ -29,8 +29,11 @@ export interface Seller {
   businessName: string
   email: string
   address: string
+  barangay?: string
   contactNumber: string
   rating: number
+  isOpen?: boolean
+  verificationStatus?: "pending" | "verified" | "rejected"
 }
 
 export interface Product {
@@ -146,4 +149,37 @@ export interface SellerDashboard {
   metrics: SellerDashboardMetric[]
   pendingOrders: Order[]
   expiringProducts: Product[]
+}
+
+export interface SellerReportDay {
+  day: string
+  sales: number
+  orders: number
+}
+
+export interface SellerReportTopProduct extends Product {
+  soldQuantity: number
+  revenue: number
+}
+
+export interface SellerReports {
+  revenue: {
+    weekly: number
+    totalOrders: number
+    recoveryEarnings: number
+  }
+  waste: {
+    reducedKg: number
+    mealsSavedEstimate: number
+  }
+  weeklyBreakdown: SellerReportDay[]
+  topProducts: SellerReportTopProduct[]
+}
+
+export interface SellerProfileUpdateInput {
+  businessName?: string
+  address?: string
+  barangay?: string
+  contactNumber?: string
+  isOpen?: boolean
 }

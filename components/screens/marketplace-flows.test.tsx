@@ -30,7 +30,13 @@ import {
   SellerVerifyPickupScreen,
 } from "@/components/screens/seller-screens"
 import { LOCAL_STORAGE_KEYS } from "@/lib/local-storage"
-import { apiErrorResponse, apiSuccessResponse, installMarketplaceFetchMock } from "@/test/api-fetch-mock"
+import {
+  API_SELLER_REPORTS,
+  API_SELLER_PROFILE,
+  apiErrorResponse,
+  apiSuccessResponse,
+  installMarketplaceFetchMock,
+} from "@/test/api-fetch-mock"
 
 const TEST_CART_ITEM: CartItem = {
   id: "p1",
@@ -1100,33 +1106,159 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByTestId("screen")).not.toHaveTextContent("seller-products")
   })
 
-  it("renders seller reports with metric cards, chart bars, and top products", async () => {
+  it("shows a loading state while seller reports load", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let resolveReports!: (response: Response) => void
+    const reportsResponse = new Promise<Response>((resolve) => {
+      resolveReports = resolve
+    })
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/reports") return reportsResponse
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerReportsScreen />, <SeedRole role="seller" />)
+
+    expect(screen.getByText("Loading seller reports...")).toBeInTheDocument()
+    resolveReports(apiSuccessResponse(API_SELLER_REPORTS))
+
+    expect(await screen.findByRole("heading", { name: /sales reports/i })).toBeInTheDocument()
+  })
+
+  it("renders seller reports from the SQL-backed report service", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
     renderWithAppState(<SellerReportsScreen />, <SeedRole role="seller" />)
 
     expect(await screen.findByRole("heading", { name: /sales reports/i })).toBeInTheDocument()
     expect(screen.getByText("Weekly Revenue")).toBeInTheDocument()
+    expect(screen.getByText("₱9,240")).toBeInTheDocument()
     expect(screen.getByText("Total Orders")).toBeInTheDocument()
+    expect(screen.getByText("12")).toBeInTheDocument()
     expect(screen.getByText(/Daily Revenue/)).toBeInTheDocument()
-    expect(screen.getByRole("img", { name: /Sat:.*5200/i })).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /Sat:.*2250/i })).toBeInTheDocument()
+    expect(screen.queryByRole("img", { name: /Sat:.*5200/i })).not.toBeInTheDocument()
     expect(screen.getByText("Environmental Impact")).toBeInTheDocument()
     expect(screen.getByText("Food Waste Reduced")).toBeInTheDocument()
     expect(screen.getByText("Recovery Earnings")).toBeInTheDocument()
+    expect(screen.getByText("₱18,420")).toBeInTheDocument()
+    expect(screen.getByText(/0 meals/)).toBeInTheDocument()
     expect(screen.getByText("Best-Selling Items")).toBeInTheDocument()
     expect(screen.getByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+    expect(screen.getByText("11 sold")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/reports", expect.any(Object))
   })
 
-  it("renders seller profile details, settings actions, and store status toggle", async () => {
-    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+  it("shows an empty seller reports state when no completed sales exist", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const emptyReports = {
+      revenue: {
+        weekly: 0,
+        totalOrders: 0,
+        recoveryEarnings: 0,
+      },
+      waste: {
+        reducedKg: 0,
+        mealsSavedEstimate: 0,
+      },
+      weeklyBreakdown: API_SELLER_REPORTS.weeklyBreakdown.map((day) => ({
+        ...day,
+        sales: 0,
+        orders: 0,
+      })),
+      topProducts: [],
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
 
-    await waitFor(() => {
-      expect(screen.getByTestId("selected-role")).toHaveTextContent("seller")
+      if (url.pathname === "/api/seller/reports") {
+        return Promise.resolve(apiSuccessResponse(emptyReports))
+      }
+
+      return baseFetch(input, init)
     })
 
-    expect(screen.getByRole("heading", { name: /store profile/i })).toBeInTheDocument()
-    expect(screen.getByText("Magsaysay Meat Depot")).toBeInTheDocument()
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerReportsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("No completed product sales yet")).toBeInTheDocument()
+    expect(screen.getAllByText("₱0").length).toBeGreaterThan(0)
+  })
+
+  it("shows a visible reports error and can retry", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let reportReads = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/reports") {
+        reportReads += 1
+        return Promise.resolve(
+          reportReads === 1
+            ? apiErrorResponse("SERVER_ERROR", "Reports are unavailable.", 500)
+            : apiSuccessResponse(API_SELLER_REPORTS),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerReportsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reports are unavailable.")
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+
+    expect(await screen.findByRole("heading", { name: /sales reports/i })).toBeInTheDocument()
+    expect(screen.getByText("₱9,240")).toBeInTheDocument()
+  })
+
+  it("shows a loading state while seller profile loads", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let resolveProfile!: (response: Response) => void
+    const profileResponse = new Promise<Response>((resolve) => {
+      resolveProfile = resolve
+    })
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/profile") return profileResponse
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+
+    expect(screen.getByText("Loading seller profile...")).toBeInTheDocument()
+    resolveProfile(apiSuccessResponse({ seller: API_SELLER_PROFILE }))
+
+    expect(await screen.findByRole("heading", { name: /store profile/i })).toBeInTheDocument()
+  })
+
+  it("renders seller profile details from the SQL-backed profile service", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
+    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("heading", { name: /store profile/i })).toBeInTheDocument()
+    expect(screen.getByText("SQL Magsaysay Meat Depot")).toBeInTheDocument()
     expect(screen.getByText("Verified Seller")).toBeInTheDocument()
-    expect(screen.getByText(/Magsaysay Market/)).toBeInTheDocument()
-    expect(screen.getByText("+63 912 345 6789")).toBeInTheDocument()
+    expect(screen.getByText(/SQL Magsaysay Market/)).toBeInTheDocument()
+    expect(screen.getByText("+63 912 000 1111")).toBeInTheDocument()
     expect(screen.getByText("Business Hours")).toBeInTheDocument()
     expect(screen.getByText(/Mon.*Fri/)).toBeInTheDocument()
     expect(screen.getByText("Store Status")).toBeInTheDocument()
@@ -1135,11 +1267,86 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByRole("button", { name: /edit store info/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /seller support/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/profile", expect.any(Object))
+  })
+
+  it("shows a visible seller profile error and can retry", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let profileReads = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/profile" && (init?.method ?? "GET") === "GET") {
+        profileReads += 1
+        return Promise.resolve(
+          profileReads === 1
+            ? apiErrorResponse("SERVER_ERROR", "Profile is unavailable.", 500)
+            : apiSuccessResponse({ seller: API_SELLER_PROFILE }),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Profile is unavailable.")
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+
+    expect(await screen.findByText("SQL Magsaysay Meat Depot")).toBeInTheDocument()
+  })
+
+  it("persists seller store status changes through the profile API", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
+    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("SQL Magsaysay Meat Depot")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("switch", { name: /store open/i }))
 
-    expect(screen.getByText("Hidden from listings")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("Hidden from listings")).toBeInTheDocument()
+    })
     expect(screen.getByRole("switch", { name: /store closed/i })).toHaveAttribute("aria-checked", "false")
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/profile", expect.any(Object))
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([path, init]) => path === "/api/seller/profile" && (init as RequestInit | undefined)?.method === "PATCH",
+    )
+    expect(JSON.parse(String((patchCall?.[1] as RequestInit).body))).toEqual({
+      isOpen: false,
+    })
+  })
+
+  it("rolls back seller store status when the profile API fails", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/profile" && init?.method === "PATCH") {
+        return Promise.resolve(apiErrorResponse("SERVER_ERROR", "Store status could not be updated.", 500))
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("SQL Magsaysay Meat Depot")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("switch", { name: /store open/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Store status could not be updated.")
+    expect(screen.getByText("Visible to buyers")).toBeInTheDocument()
+    expect(screen.getByRole("switch", { name: /store open/i })).toHaveAttribute("aria-checked", "true")
   })
 
   it("deletes seller products through the seller service", async () => {

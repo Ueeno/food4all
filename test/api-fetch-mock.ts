@@ -1,6 +1,14 @@
 import { vi } from "vitest"
 
-import type { ApiCartItem, ApiCategory, ApiErrorCode, ApiOrder, ApiProduct } from "@/lib/api-contracts"
+import type {
+  ApiCartItem,
+  ApiCategory,
+  ApiErrorCode,
+  ApiOrder,
+  ApiProduct,
+  ApiSellerProfile,
+  ApiSellerReportTopProduct,
+} from "@/lib/api-contracts"
 import { CATEGORIES, PRODUCTS, SELLER_ORDERS } from "@/lib/mock-data"
 import type { Category, Order, Product } from "@/lib/types"
 
@@ -22,6 +30,49 @@ export const API_PRODUCTS: ApiProduct[] = PRODUCTS.map((product) => ({
   createdAt: "2026-05-04T00:00:00.000Z",
   updatedAt: "2026-05-04T00:00:00.000Z",
 }))
+
+export const API_SELLER_REPORTS = {
+  revenue: {
+    weekly: 9240,
+    totalOrders: 12,
+    recoveryEarnings: 18420,
+  },
+  waste: {
+    reducedKg: 0,
+    mealsSavedEstimate: 0,
+  },
+  weeklyBreakdown: [
+    { day: "Mon", sales: 840, orders: 1 },
+    { day: "Tue", sales: 1200, orders: 2 },
+    { day: "Wed", sales: 950, orders: 1 },
+    { day: "Thu", sales: 1500, orders: 2 },
+    { day: "Fri", sales: 1600, orders: 2 },
+    { day: "Sat", sales: 2250, orders: 3 },
+    { day: "Sun", sales: 900, orders: 1 },
+  ],
+  topProducts: [
+    {
+      ...API_PRODUCTS[0]!,
+      soldQuantity: 11,
+      revenue: 2035,
+    },
+  ] satisfies ApiSellerReportTopProduct[],
+}
+
+export const API_SELLER_PROFILE: ApiSellerProfile = {
+  id: "seller-magsaysay-meat-depot",
+  userId: "mock-seller-user",
+  businessName: "SQL Magsaysay Meat Depot",
+  email: "seller@food4all.local",
+  address: "SQL Magsaysay Market, Poblacion District, Davao City 8000",
+  barangay: "Poblacion District",
+  contactNumber: "+63 912 000 1111",
+  rating: 4.7,
+  isOpen: true,
+  verificationStatus: "verified",
+  createdAt: "2026-05-04T00:00:00.000Z",
+  updatedAt: "2026-05-04T00:00:00.000Z",
+}
 
 export function apiSuccessResponse<Data>(data: Data, init: ResponseInit = {}) {
   return new Response(JSON.stringify({ ok: true, data }), {
@@ -162,6 +213,7 @@ function cartPayload(cartItems: ApiCartItem[]) {
 export function installMarketplaceFetchMock() {
   const sellerProducts: ApiProduct[] = API_PRODUCTS.map((product) => ({ ...product }))
   const sellerOrders: Order[] = SELLER_ORDERS.map((order) => ({ ...order }))
+  let sellerProfile: ApiSellerProfile = { ...API_SELLER_PROFILE }
   const cartItems: ApiCartItem[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = parseFetchUrl(input)
@@ -498,6 +550,41 @@ export function installMarketplaceFetchMock() {
         pendingOrders: pendingOrders.slice(0, 5).map((order) => toApiOrder(order)),
         expiringProducts,
       })
+    }
+
+    if (url.pathname === "/api/seller/reports" && (requestMethod ?? "GET") === "GET") {
+      return apiSuccessResponse({
+        revenue: { ...API_SELLER_REPORTS.revenue },
+        waste: { ...API_SELLER_REPORTS.waste },
+        weeklyBreakdown: API_SELLER_REPORTS.weeklyBreakdown.map((day) => ({ ...day })),
+        topProducts: API_SELLER_REPORTS.topProducts.map((product) => ({ ...product })),
+      })
+    }
+
+    if (url.pathname === "/api/seller/profile") {
+      const method = requestMethod ?? "GET"
+
+      if (method === "GET") {
+        return apiSuccessResponse({ seller: { ...sellerProfile } })
+      }
+
+      if (method === "PATCH") {
+        const body = (await readRequestBody()) as Partial<ApiSellerProfile>
+
+        if (body.businessName !== undefined && !body.businessName.trim()) {
+          return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+            businessName: "Business name is required.",
+          })
+        }
+
+        sellerProfile = {
+          ...sellerProfile,
+          ...body,
+          updatedAt: "2026-05-05T00:00:00.000Z",
+        }
+
+        return apiSuccessResponse({ seller: { ...sellerProfile } })
+      }
     }
 
     const sellerOrderStatusMatch = url.pathname.match(/^\/api\/seller\/orders\/(.+)\/status$/)

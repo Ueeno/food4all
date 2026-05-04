@@ -1,4 +1,4 @@
-import type { ApiCartItem, ApiCategory, ApiProduct, ApiUser } from "@/lib/api-contracts"
+import type { ApiCartItem, ApiCategory, ApiProduct, ApiSellerProfile, ApiUser } from "@/lib/api-contracts"
 
 type DbUser = {
   id: string
@@ -57,6 +57,20 @@ type DbCartItem = {
   product: DbProduct
 }
 
+type DbSellerProfile = {
+  id: string
+  userId: string
+  businessName: string
+  address: string
+  barangay: string | null
+  contactNumber: string
+  rating: number
+  isOpen: boolean
+  verificationStatus: ApiSellerProfile["verificationStatus"]
+  createdAt: Date
+  updatedAt: Date
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export function centsToPesos(cents: number): number {
@@ -111,6 +125,23 @@ export function mapApiProduct(product: DbProduct, now = new Date()): ApiProduct 
     status: product.status,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
+  }
+}
+
+export function mapApiSellerProfile(profile: DbSellerProfile, email: string): ApiSellerProfile {
+  return {
+    id: profile.id,
+    businessName: profile.businessName,
+    email,
+    address: profile.address,
+    contactNumber: profile.contactNumber,
+    rating: profile.rating,
+    userId: profile.userId,
+    barangay: profile.barangay ?? undefined,
+    isOpen: profile.isOpen,
+    verificationStatus: profile.verificationStatus,
+    createdAt: profile.createdAt.toISOString(),
+    updatedAt: profile.updatedAt.toISOString(),
   }
 }
 

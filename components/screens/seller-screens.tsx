@@ -8,8 +8,16 @@ import { BottomNav } from "@/components/bottom-nav"
 import { GlassButton } from "@/components/glass-button"
 import { LoadingView } from "@/components/food4all"
 import { getSellerOrders, updateSellerOrderStatus, verifyPickupCode } from "@/lib/services/order-service"
-import { createProduct, deleteProduct, getSellerProducts, updateProduct } from "@/lib/services/seller-service"
-import type { Order, Product, ProductInput } from "@/lib/types"
+import {
+  createProduct,
+  deleteProduct,
+  getSellerProducts,
+  getSellerProfile,
+  getSellerReports,
+  updateProduct,
+  updateSellerProfile,
+} from "@/lib/services/seller-service"
+import type { Order, Product, ProductInput, Seller, SellerReports } from "@/lib/types"
 import {
   ChevronLeft,
   Upload,
@@ -1416,43 +1424,44 @@ export function SellerVerifyPickupScreen() {
 // Seller Reports Screen
 // ──────────────────────────────────────────────
 export function SellerReportsScreen() {
-  const [topProducts, setTopProducts] = useState<Product[]>([])
+  const [reports, setReports] = useState<SellerReports | null>(null)
   const [loading, setLoading] = useState(true)
-
-  const weekData = [
-    { day: "Mon", sales: 2840, orders: 5 },
-    { day: "Tue", sales: 3200, orders: 7 },
-    { day: "Wed", sales: 2100, orders: 4 },
-    { day: "Thu", sales: 4500, orders: 9 },
-    { day: "Fri", sales: 3800, orders: 8 },
-    { day: "Sat", sales: 5200, orders: 11 },
-    { day: "Sun", sales: 4100, orders: 10 },
-  ]
-
-  const maxSales = Math.max(...weekData.map((d) => d.sales))
-  const totalWeekly = weekData.reduce((s, d) => s + d.sales, 0)
-  const totalOrders = weekData.reduce((s, d) => s + d.orders, 0)
-  const wasteReduced = 24.6
-  const recoveryEarnings = 18420
+  const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let ignore = false
 
-    async function loadTopProducts() {
-      const nextProducts = await getSellerProducts()
+    async function loadReports() {
+      try {
+        setLoading(true)
+        setError(null)
+        const nextReports = await getSellerReports()
 
-      if (ignore) return
+        if (ignore) return
 
-      setTopProducts(nextProducts.slice(0, 5))
-      setLoading(false)
+        setReports(nextReports)
+      } catch (loadError) {
+        if (!ignore) {
+          setError(
+            isApiClientError(loadError)
+              ? loadError.message
+              : "Failed to load seller reports.",
+          )
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
     }
 
-    loadTopProducts()
+    loadReports()
 
     return () => {
       ignore = true
     }
-  }, [])
+  }, [reloadKey])
 
   if (loading) {
     return (
@@ -1463,20 +1472,54 @@ export function SellerReportsScreen() {
     )
   }
 
+  if (error && !reports) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+          <h2 className="text-lg font-bold text-foreground mb-2">Failed to load reports</h2>
+          <p role="alert" className="text-sm text-muted-foreground mb-5">{error}</p>
+          <GlassButton
+            onClick={() => setReloadKey((key) => key + 1)}
+            className="rounded-2xl px-5 py-3 text-sm font-bold text-white"
+          >
+            Try Again
+          </GlassButton>
+        </div>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  const weekData = reports?.weeklyBreakdown ?? []
+  const topProducts = reports?.topProducts ?? []
+  const maxSales = Math.max(1, ...weekData.map((d) => d.sales))
+  const totalWeekly = reports?.revenue.weekly ?? 0
+  const totalOrders = reports?.revenue.totalOrders ?? 0
+  const recoveryEarnings = reports?.revenue.recoveryEarnings ?? 0
+  const wasteReduced = reports?.waste.reducedKg ?? 0
+  const mealsSaved = reports?.waste.mealsSavedEstimate ?? 0
+  const averageOrder = totalOrders > 0 ? Math.round(recoveryEarnings / totalOrders) : 0
+
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
       <div className="sky-gradient-deep pt-12 pb-5 px-5 shrink-0">
         <h1 className="text-white font-black text-2xl">Sales Reports</h1>
-        <p className="text-white/70 text-xs mt-0.5">Apr 24 – Apr 30, 2026</p>
+        <p className="text-white/70 text-xs mt-0.5">Last 7 days</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 pb-24 space-y-4" style={{ scrollbarWidth: "none" }}>
+        {error && (
+          <div role="alert" className="rounded-2xl bg-red-50 border border-red-100 p-3 text-xs font-semibold text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* KPI grid */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Weekly Revenue", value: `₱${totalWeekly.toLocaleString()}`, sub: "+12% vs last week", icon: TrendingUp, color: "var(--primary)" },
-            { label: "Total Orders", value: totalOrders.toString(), sub: "Avg ₱476 per order", icon: Package, color: "var(--success)" },
+            { label: "Weekly Revenue", value: `₱${totalWeekly.toLocaleString()}`, sub: "Completed orders", icon: TrendingUp, color: "var(--primary)" },
+            { label: "Total Orders", value: totalOrders.toString(), sub: `Avg ₱${averageOrder.toLocaleString()} per order`, icon: Package, color: "var(--success)" },
           ].map(({ label, value, sub, icon: Icon, color }) => (
             <div key={label} className="glass-card-strong rounded-2xl p-4 shadow-xl">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
@@ -1498,8 +1541,8 @@ export function SellerReportsScreen() {
           </div>
           <div className="flex items-end gap-2" style={{ height: 100 }}>
             {weekData.map((d) => {
-              const pct = Math.round((d.sales / maxSales) * 100)
-              const isBest = d.sales === maxSales
+              const pct = d.sales > 0 ? Math.max(6, Math.round((d.sales / maxSales) * 100)) : 6
+              const isBest = d.sales > 0 && d.sales === maxSales
               return (
                 <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
                   <span className="text-[8px] text-muted-foreground font-semibold">
@@ -1540,7 +1583,7 @@ export function SellerReportsScreen() {
           </div>
           <div className="mt-3 rounded-xl px-3 py-2 bg-muted/50">
             <p className="text-[10px] text-muted-foreground text-center">
-              Equivalent to saving <strong className="text-foreground">62 meals</strong> from landfill this week
+              Equivalent to saving <strong className="text-foreground">{mealsSaved} meals</strong> from landfill this week
             </p>
           </div>
         </div>
@@ -1548,12 +1591,16 @@ export function SellerReportsScreen() {
         {/* Top products */}
         <div className="glass-card-strong rounded-3xl p-5 shadow-xl">
           <h3 className="font-bold text-foreground text-sm mb-4">Best-Selling Items</h3>
-          <div className="flex flex-col gap-3">
-            {topProducts.map((p, i) => {
-              const revenue = p.discountedPrice * p.quantity
-              const maxRevenue = topProducts[0]
-                ? topProducts[0].discountedPrice * topProducts[0].quantity
-                : 1
+          {topProducts.length === 0 ? (
+            <div className="rounded-2xl bg-muted/50 p-4 text-center">
+              <p className="text-xs font-semibold text-foreground">No completed product sales yet</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Completed pickups will appear here.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {topProducts.map((p, i) => {
+              const revenue = p.revenue
+              const maxRevenue = topProducts[0]?.revenue || 1
               return (
                 <div key={p.id} className="flex items-center gap-3">
                   <span
@@ -1576,7 +1623,7 @@ export function SellerReportsScreen() {
                           aria-hidden="true"
                         />
                       </div>
-                      <span className="text-[9px] text-muted-foreground shrink-0">{p.quantity} sold</span>
+                      <span className="text-[9px] text-muted-foreground shrink-0">{p.soldQuantity} sold</span>
                     </div>
                   </div>
                   <span className="text-sm font-black text-primary shrink-0">
@@ -1585,7 +1632,8 @@ export function SellerReportsScreen() {
                 </div>
               )
             })}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1599,7 +1647,12 @@ export function SellerReportsScreen() {
 // ──────────────────────────────────────────────
 export function SellerProfileScreen() {
   const { logout } = useAppState()
-  const [isOpen, setIsOpen] = useState(true)
+  const [seller, setSeller] = useState<Seller | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savingStatus, setSavingStatus] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const stats = [
     { label: "Total Sales", value: "₱48,920" },
@@ -1633,6 +1686,104 @@ export function SellerProfileScreen() {
     },
   ]
 
+  useEffect(() => {
+    let ignore = false
+
+    async function loadProfile() {
+      try {
+        setLoading(true)
+        setLoadError(null)
+        const nextSeller = await getSellerProfile()
+
+        if (ignore) return
+
+        setSeller(nextSeller)
+      } catch (error) {
+        if (!ignore) {
+          setLoadError(isApiClientError(error) ? error.message : "Failed to load seller profile.")
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      ignore = true
+    }
+  }, [reloadKey])
+
+  const isOpen = seller?.isOpen ?? false
+  const verificationLabel =
+    seller?.verificationStatus === "verified"
+      ? "Verified Seller"
+      : seller?.verificationStatus === "rejected"
+        ? "Verification Rejected"
+        : "Verification Pending"
+  const initials = (seller?.businessName ?? "Store")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "ST"
+  const rating = seller?.rating ?? 0
+  const roundedRating = Math.round(rating)
+
+  async function toggleStoreStatus() {
+    if (!seller || savingStatus) return
+
+    const nextIsOpen = !isOpen
+    const previousSeller = seller
+
+    setSaveError(null)
+    setSavingStatus(true)
+    setSeller({ ...seller, isOpen: nextIsOpen })
+
+    try {
+      const updatedSeller = await updateSellerProfile({ isOpen: nextIsOpen })
+
+      setSeller(updatedSeller)
+    } catch (error) {
+      setSeller(previousSeller)
+      setSaveError(isApiClientError(error) ? error.message : "Failed to update store status.")
+    } finally {
+      setSavingStatus(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <LoadingView label="Loading seller profile..." className="flex-1" />
+        <BottomNav />
+      </div>
+    )
+  }
+
+  if (loadError || !seller) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+          <h2 className="text-lg font-bold text-foreground mb-2">Failed to load profile</h2>
+          <p role="alert" className="text-sm text-muted-foreground mb-5">
+            {loadError ?? "Seller profile is unavailable."}
+          </p>
+          <GlassButton
+            onClick={() => setReloadKey((key) => key + 1)}
+            className="rounded-2xl px-5 py-3 text-sm font-bold text-white"
+          >
+            Try Again
+          </GlassButton>
+        </div>
+        <BottomNav />
+      </div>
+    )
+  }
+
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
       <div className="sky-gradient-deep pt-12 pb-20 px-5 relative overflow-hidden shrink-0">
@@ -1653,14 +1804,14 @@ export function SellerProfileScreen() {
           <div className="glass-card-strong rounded-3xl p-5 shadow-2xl">
             <div className="flex items-center gap-4 mb-4">
               <div className="w-16 h-16 rounded-2xl sky-gradient flex items-center justify-center shadow-lg ring-4 ring-white/50 shrink-0">
-                <span className="text-white font-black text-lg" aria-hidden="true">MM</span>
+                <span className="text-white font-black text-lg" aria-hidden="true">{initials}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-base font-black text-foreground leading-tight">Magsaysay Meat Depot</h2>
+                <h2 className="text-base font-black text-foreground leading-tight">{seller.businessName}</h2>
                 <div className="flex items-center gap-1.5 mt-1">
                   <div className="badge-trust text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1">
                     <ShieldCheck className="w-2.5 h-2.5" />
-                    Verified Seller
+                    {verificationLabel}
                   </div>
                   <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold ${
                     isOpen ? "bg-green-50 text-green-700" : "bg-muted text-muted-foreground"
@@ -1675,13 +1826,13 @@ export function SellerProfileScreen() {
             <div className="flex items-start gap-2 mb-3">
               <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Magsaysay Market, Poblacion District, Davao City 8000
+                {seller.address}
               </p>
             </div>
 
             <div className="flex items-center gap-2 mb-4">
               <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">+63 912 345 6789</p>
+              <p className="text-xs text-muted-foreground">{seller.contactNumber}</p>
             </div>
 
             {/* Stats */}
@@ -1697,11 +1848,11 @@ export function SellerProfileScreen() {
             {/* Star rating */}
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-2xl bg-muted/60">
               <div className="flex gap-0.5">
-                {[1,2,3,4,5].map(i => (
-                  <Star key={i} className={`w-3.5 h-3.5 ${i <= 4 ? "fill-amber-400 text-amber-400" : "text-border"}`} aria-hidden="true" />
-                ))}
-              </div>
-              <span className="text-xs font-black text-foreground">4.8</span>
+                  {[1,2,3,4,5].map(i => (
+                    <Star key={i} className={`w-3.5 h-3.5 ${i <= roundedRating ? "fill-amber-400 text-amber-400" : "text-border"}`} aria-hidden="true" />
+                  ))}
+                </div>
+                <span className="text-xs font-black text-foreground">{rating.toFixed(1)}</span>
               <span className="text-[10px] text-muted-foreground">· 89 reviews</span>
             </div>
           </div>
@@ -1727,6 +1878,11 @@ export function SellerProfileScreen() {
 
         {/* Toggle open/closed */}
         <div className="px-5 mb-5">
+          {saveError && (
+            <div role="alert" className="rounded-2xl bg-red-50 border border-red-100 p-3 text-xs font-semibold text-red-700 mb-3">
+              {saveError}
+            </div>
+          )}
           <div className="glass-card rounded-2xl px-4 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isOpen ? "sky-gradient" : "bg-muted"}`}>
@@ -1740,11 +1896,14 @@ export function SellerProfileScreen() {
             <button
               role="switch"
               aria-checked={isOpen}
-              onClick={() => setIsOpen(v => !v)}
-              className={`relative w-11 h-6 rounded-full transition-all duration-200 ${isOpen ? "sky-gradient" : "bg-border"}`}
+              disabled={savingStatus}
+              onClick={toggleStoreStatus}
+              className={`relative w-11 h-6 rounded-full transition-all duration-200 disabled:opacity-60 ${isOpen ? "sky-gradient" : "bg-border"}`}
             >
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-200 ${isOpen ? "left-6" : "left-1"}`} />
-              <span className="sr-only">{isOpen ? "Store open" : "Store closed"}</span>
+              <span className="sr-only">
+                {savingStatus ? "Saving store status" : isOpen ? "Store open" : "Store closed"}
+              </span>
             </button>
           </div>
         </div>

@@ -15,6 +15,11 @@ import {
 } from "@/app/api/orders/route"
 import { GET as getSellerOrdersRoute } from "@/app/api/seller/orders/route"
 import { PATCH as updateSellerOrderStatus } from "@/app/api/seller/orders/[id]/status/route"
+import {
+  GET as getSellerProfileRoute,
+  PATCH as updateSellerProfileRoute,
+} from "@/app/api/seller/profile/route"
+import { GET as getSellerReportsRoute } from "@/app/api/seller/reports/route"
 import { POST as verifyPickup } from "@/app/api/pickup/verify/route"
 import {
   DELETE as clearCart,
@@ -1528,6 +1533,289 @@ describe("backend route handlers", () => {
         message: "Pickup code was not found.",
       },
     })
+  })
+
+  // ─── Seller reports tests ─────────────────────────────────────
+
+  it("GET /api/seller/reports returns 401 when unauthenticated", async () => {
+    const response = await getSellerReportsRoute(getRequest("/api/seller/reports"))
+
+    expect(response.status).toBe(401)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    })
+  })
+
+  it("GET /api/seller/reports returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await getSellerReportsRoute(getRequest("/api/seller/reports", buyerCookie))
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("GET /api/seller/reports computes completed own-order metrics and keeps sellers isolated", async () => {
+    const sellerOrder = await createReadyOrderForProduct("test-product-active")
+    const otherSellerOrder = await createReadyOrderForProduct("test-other-seller-product")
+    const sellerCookie = await loginAs("seller@example.test")
+    const otherSellerCookie = await loginAs("other-seller@example.test")
+
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: sellerOrder.pickupCode }, sellerCookie))
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: otherSellerOrder.pickupCode }, otherSellerCookie))
+
+    const response = await getSellerReportsRoute(getRequest("/api/seller/reports", sellerCookie))
+    const body = await responseJson(response)
+    const data = body.data as {
+      revenue: { weekly: number; totalOrders: number; recoveryEarnings: number }
+      waste: { reducedKg: number; mealsSavedEstimate: number }
+      weeklyBreakdown: { day: string; sales: number; orders: number }[]
+      topProducts: { id: string; soldQuantity: number; revenue: number }[]
+    }
+
+    expect(response.status).toBe(200)
+    expect(data.revenue).toEqual({
+      weekly: 185,
+      totalOrders: 1,
+      recoveryEarnings: 185,
+    })
+    expect(data.weeklyBreakdown).toHaveLength(7)
+    expect(data.weeklyBreakdown.reduce((sum, day) => sum + day.sales, 0)).toBe(185)
+    expect(data.weeklyBreakdown.reduce((sum, day) => sum + day.orders, 0)).toBe(1)
+    expect(data.waste).toEqual({
+      reducedKg: 0,
+      mealsSavedEstimate: 0,
+    })
+    expect(data.topProducts).toEqual([
+      expect.objectContaining({
+        id: "test-product-active",
+        soldQuantity: 1,
+        revenue: 185,
+      }),
+    ])
+
+    const otherResponse = await getSellerReportsRoute(getRequest("/api/seller/reports", otherSellerCookie))
+    const otherBody = await responseJson(otherResponse)
+    const otherData = otherBody.data as {
+      revenue: { weekly: number; totalOrders: number; recoveryEarnings: number }
+      topProducts: { id: string }[]
+    }
+
+    expect(otherData.revenue).toEqual({
+      weekly: 150,
+      totalOrders: 1,
+      recoveryEarnings: 150,
+    })
+    expect(otherData.topProducts).toEqual([
+      expect.objectContaining({
+        id: "test-other-seller-product",
+      }),
+    ])
+  })
+
+  it("GET /api/seller/reports excludes removed products from top products", async () => {
+    const order = await createReadyOrderForProduct("test-product-active")
+    const sellerCookie = await loginAs("seller@example.test")
+
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie))
+    await getPrisma().product.update({
+      where: {
+        id: "test-product-active",
+      },
+      data: {
+        status: "removed",
+      },
+    })
+
+    const response = await getSellerReportsRoute(getRequest("/api/seller/reports", sellerCookie))
+    const body = await responseJson(response)
+    const data = body.data as {
+      revenue: { weekly: number; totalOrders: number; recoveryEarnings: number }
+      topProducts: { id: string }[]
+    }
+
+    expect(response.status).toBe(200)
+    expect(data.revenue).toEqual({
+      weekly: 185,
+      totalOrders: 1,
+      recoveryEarnings: 185,
+    })
+    expect(data.topProducts).toEqual([])
+  })
+
+  // ─── Seller profile tests ─────────────────────────────────────
+
+  it("GET /api/seller/profile returns 401 when unauthenticated", async () => {
+    const response = await getSellerProfileRoute(getRequest("/api/seller/profile"))
+
+    expect(response.status).toBe(401)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    })
+  })
+
+  it("GET /api/seller/profile returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await getSellerProfileRoute(getRequest("/api/seller/profile", buyerCookie))
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("GET /api/seller/profile returns the authenticated seller profile", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const otherSellerCookie = await loginAs("other-seller@example.test")
+    const response = await getSellerProfileRoute(getRequest("/api/seller/profile", sellerCookie))
+    const otherResponse = await getSellerProfileRoute(getRequest("/api/seller/profile", otherSellerCookie))
+
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        seller: {
+          id: "test-seller-profile",
+          userId: "test-seller-user",
+          businessName: "Integration Meat Depot",
+          address: "Magsaysay Market, Davao City",
+          barangay: "Poblacion District",
+          contactNumber: "09170000002",
+          email: "seller@example.test",
+          isOpen: true,
+          verificationStatus: "verified",
+        },
+      },
+    })
+    await expect(responseJson(otherResponse)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        seller: {
+          id: "test-other-seller-profile",
+          businessName: "Other Seller Depot",
+          email: "other-seller@example.test",
+        },
+      },
+    })
+  })
+
+  it("PATCH /api/seller/profile returns 401 when unauthenticated", async () => {
+    const response = await updateSellerProfileRoute(
+      jsonRequest("/api/seller/profile", { isOpen: false }, undefined, "PATCH"),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it("PATCH /api/seller/profile returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await updateSellerProfileRoute(
+      jsonRequest("/api/seller/profile", { isOpen: false }, buyerCookie, "PATCH"),
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it("PATCH /api/seller/profile returns validation errors for invalid updates", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await updateSellerProfileRoute(
+      jsonRequest(
+        "/api/seller/profile",
+        {
+          businessName: "",
+          isOpen: "yes",
+        },
+        sellerCookie,
+        "PATCH",
+      ),
+    )
+
+    expect(response.status).toBe(422)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        fieldErrors: {
+          businessName: "Business name is required.",
+          isOpen: "Store status must be true or false.",
+        },
+      },
+    })
+  })
+
+  it("PATCH /api/seller/profile updates only the authenticated seller profile", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await updateSellerProfileRoute(
+      jsonRequest(
+        "/api/seller/profile",
+        {
+          businessName: "Updated Integration Depot",
+          address: "Updated Market, Davao City",
+          barangay: "Matina",
+          contactNumber: "09179990000",
+          isOpen: false,
+        },
+        sellerCookie,
+        "PATCH",
+      ),
+    )
+    const body = await responseJson(response)
+    const otherSeller = await getPrisma().sellerProfile.findUnique({
+      where: {
+        id: "test-other-seller-profile",
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        seller: {
+          id: "test-seller-profile",
+          businessName: "Updated Integration Depot",
+          address: "Updated Market, Davao City",
+          barangay: "Matina",
+          contactNumber: "09179990000",
+          isOpen: false,
+        },
+      },
+    })
+    expect(otherSeller).toMatchObject({
+      businessName: "Other Seller Depot",
+      isOpen: true,
+    })
+  })
+
+  it("PATCH /api/seller/profile persists store status toggles", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+
+    await updateSellerProfileRoute(
+      jsonRequest("/api/seller/profile", { isOpen: false }, sellerCookie, "PATCH"),
+    )
+
+    const storedClosed = await getPrisma().sellerProfile.findUnique({
+      where: {
+        id: "test-seller-profile",
+      },
+    })
+
+    await updateSellerProfileRoute(
+      jsonRequest("/api/seller/profile", { isOpen: true }, sellerCookie, "PATCH"),
+    )
+
+    const storedOpen = await getPrisma().sellerProfile.findUnique({
+      where: {
+        id: "test-seller-profile",
+      },
+    })
+
+    expect(storedClosed?.isOpen).toBe(false)
+    expect(storedOpen?.isOpen).toBe(true)
   })
 
   it("PATCH /api/auth/role returns 401 when unauthenticated", async () => {

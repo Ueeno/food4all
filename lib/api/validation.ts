@@ -237,6 +237,14 @@ export const setRoleSchema = z.object({
   }),
 })
 
+export const sellerProfileUpdateSchema = z.object({
+  businessName: optionalNonEmptyTrimmedString("Business name is required."),
+  address: optionalNonEmptyTrimmedString("Address is required."),
+  barangay: optionalTrimmedString,
+  contactNumber: optionalNonEmptyTrimmedString("Contact number is required."),
+  isOpen: z.boolean({ invalid_type_error: "Store status must be true or false." }).optional(),
+})
+
 export function getZodFieldErrors(error: z.ZodError): Record<string, string> {
   const flattened = error.flatten().fieldErrors
 

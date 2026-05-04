@@ -4,7 +4,13 @@ import { clearCart, addToCart, getCart, removeFromCart, updateCartItem } from ".
 import { getCategories } from "./category-service"
 import { getSellerOrders, verifyPickupCode } from "./order-service"
 import { getProductById, getProducts } from "./product-service"
-import { getSellerDashboard, getSellerProducts } from "./seller-service"
+import {
+  getSellerDashboard,
+  getSellerProducts,
+  getSellerProfile,
+  getSellerReports,
+  updateSellerProfile,
+} from "./seller-service"
 
 describe("service contracts", () => {
   beforeEach(async () => {
@@ -64,16 +70,26 @@ describe("service contracts", () => {
     await expect(verifyPickupCode("F4A-BAD0")).rejects.toThrow("Pickup code was not found.")
   })
 
-  it("returns seller dashboard data and seller products", async () => {
-    const [dashboard, products] = await Promise.all([
+  it("returns seller dashboard data, seller reports, seller profile, and seller products", async () => {
+    const [dashboard, reports, profile, products] = await Promise.all([
       getSellerDashboard(),
+      getSellerReports(),
+      getSellerProfile(),
       getSellerProducts(),
     ])
 
     expect(dashboard.metrics.length).toBeGreaterThan(0)
     expect(dashboard.pendingOrders).toEqual(expect.any(Array))
     expect(dashboard.expiringProducts).toEqual(expect.any(Array))
+    expect(reports.revenue.totalOrders).toBeGreaterThan(0)
+    expect(reports.weeklyBreakdown).toEqual(expect.any(Array))
+    expect(reports.topProducts).toEqual(expect.any(Array))
+    expect(profile.businessName).toBeTruthy()
     expect(products.length).toBeGreaterThan(0)
+
+    await expect(updateSellerProfile({ isOpen: false })).resolves.toMatchObject({
+      isOpen: false,
+    })
   })
 
   it("supports basic cart add, update, remove, and clear behavior", async () => {

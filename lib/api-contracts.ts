@@ -220,6 +220,16 @@ export interface PickupVerificationResult {
 export type PickupVerificationResponse = ApiResponse<PickupVerificationResult>
 
 
+export type ApiSellerReportDay = {
+  day: string
+  sales: number
+  orders: number
+}
+
+export type ApiSellerReportTopProduct = ApiProduct & {
+  soldQuantity: number
+  revenue: number
+}
 
 export type SellerReportsResponse = ApiResponse<{
   revenue: {
@@ -231,7 +241,8 @@ export type SellerReportsResponse = ApiResponse<{
     reducedKg: number
     mealsSavedEstimate: number
   }
-  topProducts: ApiProduct[]
+  weeklyBreakdown: ApiSellerReportDay[]
+  topProducts: ApiSellerReportTopProduct[]
 }>
 
 export type SellerProfileResponse = ApiResponse<{ seller: ApiSellerProfile }>

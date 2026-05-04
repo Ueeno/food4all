@@ -1,8 +1,22 @@
 import { apiRequest } from "@/lib/api-client"
-import type { ApiProduct, SellerDashboardResponse, SellerProductRequest } from "@/lib/api-contracts"
-import type { Product, ProductInput, Seller, SellerDashboard } from "@/lib/types"
-import type { ApiOrder } from "@/lib/api-contracts"
-import type { Order } from "@/lib/types"
+import type {
+  ApiOrder,
+  ApiProduct,
+  ApiSellerProfile,
+  ApiSellerReportTopProduct,
+  SellerDashboardResponse,
+  SellerProductRequest,
+  UpdateSellerProfileRequest,
+} from "@/lib/api-contracts"
+import type {
+  Order,
+  Product,
+  ProductInput,
+  Seller,
+  SellerDashboard,
+  SellerProfileUpdateInput,
+  SellerReports,
+} from "@/lib/types"
 
 
 const MOCK_SELLER: Seller = {
@@ -10,12 +24,40 @@ const MOCK_SELLER: Seller = {
   businessName: "Magsaysay Meat Depot",
   email: "seller@food4all.local",
   address: "Magsaysay Market, Poblacion District, Davao City 8000",
+  barangay: "Poblacion District",
   contactNumber: "+63 912 345 6789",
   rating: 4.8,
+  isOpen: true,
+  verificationStatus: "verified",
 }
 
 function cloneProduct(product: Product): Product {
   return { ...product }
+}
+
+function cloneReportTopProduct(product: ApiSellerReportTopProduct): SellerReports["topProducts"][number] {
+  return { ...product }
+}
+
+function mapApiSellerProfileToSeller(seller: ApiSellerProfile): Seller {
+  return {
+    id: seller.id,
+    businessName: seller.businessName,
+    email: seller.email,
+    address: seller.address,
+    barangay: seller.barangay,
+    contactNumber: seller.contactNumber,
+    rating: seller.rating,
+    isOpen: seller.isOpen,
+    verificationStatus: seller.verificationStatus,
+  }
+}
+
+type SellerReportsPayload = {
+  revenue: SellerReports["revenue"]
+  waste: SellerReports["waste"]
+  weeklyBreakdown: SellerReports["weeklyBreakdown"]
+  topProducts: ApiSellerReportTopProduct[]
 }
 
 function categoryToId(category: string) {
@@ -75,7 +117,21 @@ function mapApiOrderToOrder(order: ApiOrder): Order {
 }
 
 export async function getSellerProfile(): Promise<Seller> {
-  return { ...MOCK_SELLER }
+  const { seller } = await apiRequest<{ seller: ApiSellerProfile }>("/api/seller/profile")
+
+  return mapApiSellerProfileToSeller(seller)
+}
+
+export async function updateSellerProfile(input: SellerProfileUpdateInput): Promise<Seller> {
+  const { seller } = await apiRequest<{ seller: ApiSellerProfile }, UpdateSellerProfileRequest>(
+    "/api/seller/profile",
+    {
+      method: "PATCH",
+      body: input,
+    },
+  )
+
+  return mapApiSellerProfileToSeller(seller)
 }
 
 export async function getSellerDashboard(): Promise<SellerDashboard> {
@@ -85,6 +141,17 @@ export async function getSellerDashboard(): Promise<SellerDashboard> {
     metrics: data.metrics,
     pendingOrders: data.pendingOrders.map(mapApiOrderToOrder),
     expiringProducts: data.expiringProducts.map(cloneProduct),
+  }
+}
+
+export async function getSellerReports(): Promise<SellerReports> {
+  const data = await apiRequest<SellerReportsPayload>("/api/seller/reports")
+
+  return {
+    revenue: { ...data.revenue },
+    waste: { ...data.waste },
+    weeklyBreakdown: data.weeklyBreakdown.map((day) => ({ ...day })),
+    topProducts: data.topProducts.map(cloneReportTopProduct),
   }
 }
 

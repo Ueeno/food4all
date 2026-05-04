@@ -8,6 +8,7 @@ import { RegisterScreen } from "@/components/screens/register-screen"
 import { RoleSelectScreen } from "@/components/screens/role-select-screen"
 import { SellerProfileScreen } from "@/components/screens/seller-screens"
 import { LOCAL_STORAGE_KEYS } from "@/lib/local-storage"
+import { installMarketplaceFetchMock } from "@/test/api-fetch-mock"
 
 function StateProbe() {
   const {
@@ -324,11 +325,13 @@ describe("rendered profile logout buttons", () => {
   })
 
   it("renders seller logout and clears shared auth state", async () => {
+    installMarketplaceFetchMock()
     renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
 
     await waitFor(() => {
       expect(screen.getByTestId("selected-role")).toHaveTextContent("seller")
     })
+    await screen.findByText("SQL Magsaysay Meat Depot")
 
     const logoutButton = screen.getByRole("button", { name: /sign out/i })
     expect(logoutButton).toBeInTheDocument()

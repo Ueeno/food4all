@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { ApiCartItem, ApiOrder, ApiProduct, ApiUser, PickupVerificationResult } from "@/lib/api-contracts"
+import type {
+  ApiCartItem,
+  ApiOrder,
+  ApiProduct,
+  ApiSellerProfile,
+  ApiSellerReportTopProduct,
+  ApiUser,
+  PickupVerificationResult,
+} from "@/lib/api-contracts"
 import type { ProductInput } from "@/lib/types"
 import {
   API_PRODUCTS,
@@ -26,7 +34,15 @@ import {
   searchProducts,
 } from "./product-service"
 import { verifyPickupCode } from "./order-service"
-import { createProduct, deleteProduct, getSellerProducts, updateProduct } from "./seller-service"
+import {
+  createProduct,
+  deleteProduct,
+  getSellerProducts,
+  getSellerProfile,
+  getSellerReports,
+  updateProduct,
+  updateSellerProfile,
+} from "./seller-service"
 
 const API_USER: ApiUser = {
   id: "user-1",
@@ -63,6 +79,21 @@ const API_PRODUCT: ApiProduct = {
   sellerId: "seller-magsaysay-meat-depot",
   categoryId: "hotdogs",
   status: "active",
+  createdAt: "2026-05-04T00:00:00.000Z",
+  updatedAt: "2026-05-04T00:00:00.000Z",
+}
+
+const API_SELLER_PROFILE: ApiSellerProfile = {
+  id: "seller-profile-1",
+  userId: "seller-user-1",
+  businessName: "API Magsaysay Meat Depot",
+  email: "seller@example.test",
+  address: "API Magsaysay Market, Davao City",
+  barangay: "Poblacion District",
+  contactNumber: "09170000002",
+  rating: 4.8,
+  isOpen: true,
+  verificationStatus: "verified",
   createdAt: "2026-05-04T00:00:00.000Z",
   updatedAt: "2026-05-04T00:00:00.000Z",
 }
@@ -364,6 +395,93 @@ describe("API-backed seller product mutation service", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/seller/products/p7", expect.any(Object))
     expect(init.method).toBe("DELETE")
+  })
+})
+
+describe("API-backed seller reports service", () => {
+  it("calls the backend seller reports endpoint", async () => {
+    const topProduct: ApiSellerReportTopProduct = {
+      ...API_PRODUCT,
+      soldQuantity: 4,
+      revenue: 720,
+    }
+    const fetchMock = vi.fn(async () =>
+      apiSuccessResponse({
+        revenue: {
+          weekly: 720,
+          totalOrders: 2,
+          recoveryEarnings: 1440,
+        },
+        waste: {
+          reducedKg: 0,
+          mealsSavedEstimate: 0,
+        },
+        weeklyBreakdown: [
+          { day: "Mon", sales: 720, orders: 2 },
+        ],
+        topProducts: [topProduct],
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(getSellerReports()).resolves.toMatchObject({
+      revenue: {
+        weekly: 720,
+        totalOrders: 2,
+        recoveryEarnings: 1440,
+      },
+      waste: {
+        reducedKg: 0,
+        mealsSavedEstimate: 0,
+      },
+      weeklyBreakdown: [
+        { day: "Mon", sales: 720, orders: 2 },
+      ],
+      topProducts: [
+        expect.objectContaining({
+          id: "api-product-1",
+          soldQuantity: 4,
+          revenue: 720,
+        }),
+      ],
+    })
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/reports", expect.any(Object))
+  })
+})
+
+describe("API-backed seller profile service", () => {
+  it("calls the backend seller profile endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(apiSuccessResponse({ seller: API_SELLER_PROFILE }))
+      .mockResolvedValueOnce(
+        apiSuccessResponse({
+          seller: {
+            ...API_SELLER_PROFILE,
+            isOpen: false,
+          },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(getSellerProfile()).resolves.toMatchObject({
+      id: "seller-profile-1",
+      businessName: "API Magsaysay Meat Depot",
+      email: "seller@example.test",
+      isOpen: true,
+      verificationStatus: "verified",
+    })
+    await expect(updateSellerProfile({ isOpen: false })).resolves.toMatchObject({
+      id: "seller-profile-1",
+      isOpen: false,
+    })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/seller/profile", expect.any(Object))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/seller/profile", expect.any(Object))
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).method).toBe("PATCH")
+    expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
+      isOpen: false,
+    })
   })
 })
 
