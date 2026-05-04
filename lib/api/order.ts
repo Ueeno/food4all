@@ -44,8 +44,12 @@ export function generatePickupCode(): string {
   return `F4A-${alphanumeric}`
 }
 
+export function normalizePickupCode(code: string): string {
+  return code.trim().toUpperCase()
+}
+
 export function hashPickupCode(code: string): string {
-  return createHash("sha256").update(code.toUpperCase()).digest("hex")
+  return createHash("sha256").update(normalizePickupCode(code)).digest("hex")
 }
 
 // ─── Prisma includes ───────────────────────────────────────────
@@ -144,6 +148,20 @@ export async function getOrdersForBuyer(buyerId: string) {
   return prisma.order.findMany({
     where: {
       buyerId,
+    },
+    include: orderInclude,
+    orderBy: {
+      createdAt: "desc",
+    },
+  })
+}
+
+export async function getOrdersForSeller(sellerId: string) {
+  const prisma = getPrisma()
+
+  return prisma.order.findMany({
+    where: {
+      sellerId,
     },
     include: orderInclude,
     orderBy: {

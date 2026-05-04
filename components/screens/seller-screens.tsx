@@ -7,7 +7,7 @@ import { isApiClientError } from "@/lib/api-client"
 import { BottomNav } from "@/components/bottom-nav"
 import { GlassButton } from "@/components/glass-button"
 import { LoadingView } from "@/components/food4all"
-import { getSellerOrders, verifyPickupCode } from "@/lib/services/order-service"
+import { getSellerOrders, updateSellerOrderStatus, verifyPickupCode } from "@/lib/services/order-service"
 import { createProduct, deleteProduct, getSellerProducts, updateProduct } from "@/lib/services/seller-service"
 import type { Order, Product, ProductInput } from "@/lib/types"
 import {
@@ -56,6 +56,8 @@ type SellerProductForm = {
 type SellerProductFormErrors = Partial<Record<keyof SellerProductForm, string>>
 
 type SellerProductApiField = keyof SellerProductForm | "categoryId"
+
+const PICKUP_CODE_PATTERN = /^F4A-[A-Z0-9]{4}$/
 
 function validateSellerProductForm(form: SellerProductForm) {
   const errors: SellerProductFormErrors = {}
@@ -967,17 +969,31 @@ export function SellerOrdersScreen() {
   const [activeTab, setActiveTab] = useState<SellerOrderTab>("new")
   const [allOrders, setAllOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [retryCount, setRetryCount] = useState(0)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState("")
 
   useEffect(() => {
     let ignore = false
 
     async function loadOrders() {
-      const nextOrders = await getSellerOrders()
-
-      if (ignore) return
-
-      setAllOrders(nextOrders)
-      setLoading(false)
+      try {
+        setLoading(true)
+        setError("")
+        const nextOrders = await getSellerOrders()
+        if (!ignore) {
+          setAllOrders(nextOrders)
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "Failed to load orders.")
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
     }
 
     loadOrders()
@@ -985,7 +1001,7 @@ export function SellerOrdersScreen() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [retryCount])
 
   const tabMap: Record<SellerOrderTab, string[]> = {
     new: ["reserved"],
@@ -1003,6 +1019,19 @@ export function SellerOrdersScreen() {
 
   const filtered = allOrders.filter((o) => tabMap[activeTab].includes(o.status))
 
+  const handleStatusUpdate = async (orderId: string, newStatus: "preparing" | "ready" | "cancelled") => {
+    try {
+      setUpdatingOrderId(orderId)
+      setActionError("")
+      const updatedOrder = await updateSellerOrderStatus(orderId, newStatus)
+      setAllOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update order status.")
+    } finally {
+      setUpdatingOrderId(null)
+    }
+  }
+
   const statusStyle: Record<string, { label: string; pill: string; text: string }> = {
     reserved:  { label: "New Order",   pill: "bg-primary/10",  text: "text-primary"       },
     preparing: { label: "Preparing",   pill: "bg-amber-50",    text: "text-amber-700"     },
@@ -1014,6 +1043,26 @@ export function SellerOrdersScreen() {
     return (
       <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
         <LoadingView label="Loading seller orders..." className="flex-1" />
+        <BottomNav />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-red-500" />
+          </div>
+          <div>
+            <p className="text-lg font-bold text-foreground mb-1">Could not load orders</p>
+            <p className="text-sm text-muted-foreground" role="alert">{error}</p>
+          </div>
+          <GlassButton variant="primary" size="md" onClick={() => setRetryCount((c) => c + 1)}>
+            Try Again
+          </GlassButton>
+        </div>
         <BottomNav />
       </div>
     )
@@ -1052,6 +1101,12 @@ export function SellerOrdersScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-24" style={{ scrollbarWidth: "none" }}>
+        {actionError && (
+          <div className="mb-3 p-3 bg-red-50 rounded-xl flex items-center gap-2" role="alert">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+            <p className="text-xs text-red-600">{actionError}</p>
+          </div>
+        )}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="glass-card w-16 h-16 rounded-full flex items-center justify-center">
@@ -1100,8 +1155,16 @@ export function SellerOrdersScreen() {
                           Verify QR
                         </button>
                         {order.status === "reserved" && (
-                          <button className="flex-1 glass-btn-outline rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4" />
+                          <button
+                            onClick={() => void handleStatusUpdate(order.id, "ready")}
+                            disabled={updatingOrderId === order.id}
+                            className="flex-1 glass-btn-outline rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60"
+                          >
+                            {updatingOrderId === order.id ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4" />
+                            )}
                             Mark Ready
                           </button>
                         )}
@@ -1139,32 +1202,50 @@ export function SellerVerifyPickupScreen() {
   const [verificationError, setVerificationError] = useState("")
 
   const handleVerify = async () => {
-    setLoading(true)
-    setVerificationError("")
-    await new Promise((resolve) => setTimeout(resolve, 1200))
+    const normalizedCode = code.trim().toUpperCase()
 
-    const result = await verifyPickupCode(code)
-
-    if (result.status === "valid" && result.orderId) {
-      const orders = await getSellerOrders()
-      const nextVerification = orders.find((order) => order.id === result.orderId) ?? null
-
-      setVerification(nextVerification)
-      setVerified(true)
-      setLoading(false)
+    if (!normalizedCode) {
+      setVerification(null)
+      setVerificationError("Pickup code is required.")
       return
     }
 
-    setVerification(null)
-    setVerificationError(result.message)
-    setLoading(false)
+    if (!PICKUP_CODE_PATTERN.test(normalizedCode)) {
+      setVerification(null)
+      setVerificationError("Enter a valid pickup code.")
+      return
+    }
+
+    setLoading(true)
+    setVerificationError("")
+
+    try {
+      const result = await verifyPickupCode(normalizedCode)
+
+      if (result.status === "valid") {
+        setVerification(result.order ?? null)
+        setCode(result.code)
+        setVerified(true)
+        return
+      }
+
+      setVerification(null)
+      setVerificationError(result.message)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Pickup verification failed."
+
+      setVerification(null)
+      setVerificationError(message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleScan = () => {
     setScanActive(true)
     setTimeout(() => {
       setScanActive(false)
-      setCode("F4A-7X29")
+      setVerificationError("Camera scanning is not connected yet. Enter the pickup code manually.")
     }, 1500)
   }
 
@@ -1264,7 +1345,7 @@ export function SellerVerifyPickupScreen() {
                 size="lg"
                 fullWidth
                 loading={loading}
-                disabled={code.length < 6}
+                disabled={loading}
                 onClick={handleVerify}
                 icon={<CheckCircle2 className="w-5 h-5" />}
               >
@@ -1286,19 +1367,19 @@ export function SellerVerifyPickupScreen() {
             </div>
             <h3 className="text-2xl font-black text-foreground mb-1">Pickup Confirmed!</h3>
             <p className="text-muted-foreground text-sm mb-6">
-              Order <strong>{verification?.id ?? "ORD-2847"}</strong> verified and marked complete.
+              Order <strong>{verification?.id ?? "verified order"}</strong> verified and marked complete.
             </p>
 
             <div className="glass rounded-2xl p-4 mb-6 text-left space-y-2.5">
               {[
-                { label: "Buyer", value: verification?.buyer ?? "Maria Santos" },
+                { label: "Buyer", value: verification?.buyer ?? "Unavailable" },
                 {
                   label: "Product",
                   value: verification
                     ? `${verification.product} x${verification.quantity}`
-                    : "Purefoods Hotdog x3",
+                    : "Unavailable",
                 },
-                { label: "Code Used", value: code || "F4A-7X29" },
+                { label: "Code Used", value: code || "Unavailable" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">{label}</span>

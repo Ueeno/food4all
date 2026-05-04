@@ -6,7 +6,6 @@ import type {
   OrderStatus,
   Product,
   Seller,
-  SellerDashboard,
   User,
 } from "@/lib/types"
 
@@ -210,14 +209,17 @@ export interface VerifyPickupRequest {
   code: string
 }
 
-export type PickupVerificationResponse = ApiResponse<{
+export interface PickupVerificationResult {
   code: string
   orderId?: string
   status: "valid" | "invalid"
   message: string
-}>
+  order?: ApiOrder
+}
 
-export type SellerDashboardResponse = ApiResponse<{ dashboard: SellerDashboard }>
+export type PickupVerificationResponse = ApiResponse<PickupVerificationResult>
+
+
 
 export type SellerReportsResponse = ApiResponse<{
   revenue: {
@@ -240,4 +242,15 @@ export interface UpdateSellerProfileRequest {
   barangay?: string
   contactNumber?: string
   isOpen?: boolean
+}
+
+export interface SellerDashboardResponse {
+  metrics: {
+    key: "revenue" | "pendingOrders" | "expiringItems" | "totalSales"
+    label: string
+    value: string
+    trend: string
+  }[]
+  pendingOrders: ApiOrder[]
+  expiringProducts: ApiProduct[]
 }

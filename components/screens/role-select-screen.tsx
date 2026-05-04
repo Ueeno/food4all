@@ -9,17 +9,23 @@ export function RoleSelectScreen() {
   const { selectRole } = useAppState()
   const [selected, setSelected] = useState<"buyer" | "seller" | null>(null)
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState("")
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const role = selected
 
     if (!role) return
 
     setLoading(true)
-    setTimeout(() => {
+    setActionError("")
+    
+    try {
+      await selectRole(role)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save role.")
+    } finally {
       setLoading(false)
-      selectRole(role)
-    }, 1000)
+    }
   }
 
   return (
@@ -68,6 +74,13 @@ export function RoleSelectScreen() {
           selected={selected === "seller"}
           onClick={() => setSelected("seller")}
         />
+
+        {/* Error message */}
+        {actionError && (
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-4" role="alert">
+            <p className="text-sm text-red-500 text-center">{actionError}</p>
+          </div>
+        )}
 
         {/* Continue button */}
         <div className="pb-8 pt-2">

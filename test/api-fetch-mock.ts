@@ -1,8 +1,8 @@
 import { vi } from "vitest"
 
-import type { ApiCartItem, ApiCategory, ApiErrorCode, ApiProduct } from "@/lib/api-contracts"
-import { CATEGORIES, PRODUCTS } from "@/lib/mock-data"
-import type { Category, Product } from "@/lib/types"
+import type { ApiCartItem, ApiCategory, ApiErrorCode, ApiOrder, ApiProduct } from "@/lib/api-contracts"
+import { CATEGORIES, PRODUCTS, SELLER_ORDERS } from "@/lib/mock-data"
+import type { Category, Order, Product } from "@/lib/types"
 
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
@@ -125,6 +125,28 @@ function toApiCartItem(product: ApiProduct, quantity: number): ApiCartItem {
   }
 }
 
+function toApiOrder(order: Order): ApiOrder {
+  return {
+    ...order,
+    buyerId: "mock-buyer",
+    sellerId: "mock-seller",
+    items: [
+      {
+        id: `mock-item-${order.id}`,
+        orderId: order.id,
+        productId: "p1",
+        productName: order.product,
+        quantity: order.quantity,
+        unitPrice: order.total / order.quantity,
+        originalUnitPrice: order.total / order.quantity,
+        subtotal: order.total,
+      },
+    ],
+    createdAt: "2026-05-04T00:00:00.000Z",
+    updatedAt: "2026-05-04T00:00:00.000Z",
+  }
+}
+
 function cartPayload(cartItems: ApiCartItem[]) {
   const items = cartItems.map((item) => ({ ...item }))
   const total = items.reduce((sum, item) => sum + item.lineTotal, 0)
@@ -139,6 +161,7 @@ function cartPayload(cartItems: ApiCartItem[]) {
 
 export function installMarketplaceFetchMock() {
   const sellerProducts: ApiProduct[] = API_PRODUCTS.map((product) => ({ ...product }))
+  const sellerOrders: Order[] = SELLER_ORDERS.map((order) => ({ ...order }))
   const cartItems: ApiCartItem[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = parseFetchUrl(input)
@@ -163,6 +186,23 @@ export function installMarketplaceFetchMock() {
 
         return apiSuccessResponse(cartPayload(cartItems))
       }
+    }
+
+    if (url.pathname === "/api/auth/role" && (requestMethod ?? "GET") === "PATCH") {
+      const body = (await readRequestBody()) as { role?: string }
+      if (!body.role || !["buyer", "seller"].includes(body.role)) {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          role: "Role must be buyer or seller.",
+        })
+      }
+      return apiSuccessResponse({
+        user: {
+          id: "mock-buyer",
+          name: "Mock User",
+          email: "buyer@example.test",
+          role: body.role,
+        },
+      })
     }
 
     if (url.pathname === "/api/cart/items") {
@@ -374,9 +414,10 @@ export function installMarketplaceFetchMock() {
           cartItems.length === 1
             ? cartItems[0]?.name ?? "FOOD4ALL Reservation"
             : `${cartItems.length} reserved products`
+        const orderId = `ORD-MOCK-${Date.now()}`
 
-        const order = {
-          id: `ORD-MOCK-${Date.now()}`,
+        const order: ApiOrder = {
+          id: orderId,
           buyer: "FOOD4ALL Buyer",
           buyerId: "mock-buyer",
           sellerId: "mock-seller",
@@ -389,7 +430,7 @@ export function installMarketplaceFetchMock() {
           pickupCode: "F4A-MOCK",
           items: cartItems.map((item) => ({
             id: `oi-${item.productId}`,
-            orderId: `ORD-MOCK-${Date.now()}`,
+            orderId,
             productId: item.productId,
             productName: item.name,
             quantity: item.quantity,
@@ -410,7 +451,138 @@ export function installMarketplaceFetchMock() {
         return apiSuccessResponse({ orders: [] })
       }
     }
+    if (url.pathname === "/api/seller/orders") {
+      const orders = sellerOrders.map((order) => toApiOrder(order))
+      return apiSuccessResponse({ orders })
+    }
 
+    if (url.pathname === "/api/seller/dashboard" && (requestMethod ?? "GET") === "GET") {
+      const pendingOrders = sellerOrders.filter(
+        (order) => order.status === "reserved" || order.status === "preparing",
+      )
+      const completedOrders = sellerOrders.filter((order) => order.status === "completed")
+      const expiringProducts = sellerProducts
+        .filter((product) => product.status !== "removed" && product.daysUntilExpiry <= 14)
+        .slice(0, 3)
+        .map((product) => ({ ...product }))
+
+      const revenue = completedOrders.reduce((sum, order) => sum + order.total, 0)
+
+      return apiSuccessResponse({
+        metrics: [
+          {
+            key: "revenue",
+            label: "Today's Revenue",
+            value: `?${revenue.toFixed(2)}`,
+            trend: "+0.0% this week",
+          },
+          {
+            key: "pendingOrders",
+            label: "Pending Orders",
+            value: pendingOrders.length.toString(),
+            trend: "Needs action",
+          },
+          {
+            key: "expiringItems",
+            label: "Items Expiring",
+            value: expiringProducts.length.toString(),
+            trend: "Within 14 days",
+          },
+          {
+            key: "totalSales",
+            label: "Total Sales",
+            value: completedOrders.length.toString(),
+            trend: "Completed orders",
+          },
+        ],
+        pendingOrders: pendingOrders.slice(0, 5).map((order) => toApiOrder(order)),
+        expiringProducts,
+      })
+    }
+
+    const sellerOrderStatusMatch = url.pathname.match(/^\/api\/seller\/orders\/(.+)\/status$/)
+
+    if (sellerOrderStatusMatch?.[1] && (requestMethod ?? "GET") === "PATCH") {
+      const orderId = decodeURIComponent(sellerOrderStatusMatch[1])
+      const body = (await readRequestBody()) as { status?: string }
+
+      const existingOrder = sellerOrders.find((order) => order.id === orderId)
+
+      if (!existingOrder) {
+        return apiErrorResponse("NOT_FOUND", "Order was not found.", 404)
+      }
+
+      if (!body.status || !["preparing", "ready", "cancelled"].includes(body.status)) {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          status: "Invalid status transition.",
+        })
+      }
+
+      if (existingOrder.status === "completed" || existingOrder.status === "cancelled") {
+        return apiErrorResponse("CONFLICT", "Order status cannot be changed from completed or cancelled.", 409)
+      }
+
+      if (existingOrder.status === "ready" && body.status !== "cancelled") {
+        return apiErrorResponse("CONFLICT", "Ready orders can only be completed via pickup verification or cancelled.", 409)
+      }
+
+      const updatedOrder: Order = {
+        ...existingOrder,
+        status: body.status as Order["status"],
+      }
+      const index = sellerOrders.findIndex((order) => order.id === orderId)
+
+      if (index !== -1) {
+        sellerOrders[index] = updatedOrder
+      }
+
+      return apiSuccessResponse({ order: toApiOrder(updatedOrder) })
+    }
+
+    if (url.pathname === "/api/pickup/verify") {
+      const body = (await readRequestBody()) as { code?: string }
+      const code = body.code?.trim().toUpperCase() ?? ""
+
+      if (!code) {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          code: "Pickup code is required.",
+        })
+      }
+
+      if (!/^F4A-[A-Z0-9]{4}$/.test(code)) {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          code: "Enter a valid pickup code.",
+        })
+      }
+
+      const order = sellerOrders.find((item) => item.pickupCode.toUpperCase() === code)
+
+      if (!order) {
+        return apiErrorResponse("NOT_FOUND", "Pickup code was not found.", 404)
+      }
+
+      if (order.status !== "ready") {
+        return apiErrorResponse("CONFLICT", "Order is not ready for pickup.", 409)
+      }
+
+      const verifiedOrder: Order = { ...order, status: "completed" }
+      const index = sellerOrders.findIndex((item) => item.id === order.id)
+
+      if (index !== -1) {
+        sellerOrders[index] = verifiedOrder
+      }
+
+      return apiSuccessResponse({
+        code,
+        orderId: order.id,
+        status: "valid",
+        message: "Pickup verified successfully.",
+        order: {
+          ...toApiOrder(verifiedOrder),
+          completedAt: "2026-05-04T00:00:00.000Z",
+        },
+      })
+    }
     if (url.pathname === "/api/categories") {
       return apiSuccessResponse<{ categories: ApiCategory[] }>({
         categories: API_CATEGORIES.map((category) => ({ ...category })),

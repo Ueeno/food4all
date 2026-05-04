@@ -42,7 +42,10 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function setCurrentUserRole(role: AuthRole): Promise<User | null> {
-  const currentUser = await getCurrentUser()
+  const { user } = await apiRequest<{ user: ApiUser }, { role: string }>("/api/auth/role", {
+    method: "PATCH",
+    body: { role },
+  })
 
-  return currentUser ? { ...currentUser, role } : null
+  return toUser(user)
 }

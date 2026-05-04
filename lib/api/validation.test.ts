@@ -5,6 +5,7 @@ import {
   loginSchema,
   productListQuerySchema,
   registerSchema,
+  verifyPickupSchema,
 } from "@/lib/api/validation"
 
 describe("API validation schemas", () => {
@@ -88,5 +89,26 @@ describe("API validation schemas", () => {
     }
 
     expect(productListQuerySchema.safeParse({ pageSize: "100" }).success).toBe(false)
+  })
+
+  it("normalizes and validates pickup verification codes", () => {
+    const validResult = verifyPickupSchema.safeParse({
+      code: " f4a-7x29 ",
+    })
+    const invalidResult = verifyPickupSchema.safeParse({
+      code: "BAD",
+    })
+
+    expect(validResult.success).toBe(true)
+    if (validResult.success) {
+      expect(validResult.data.code).toBe("F4A-7X29")
+    }
+
+    expect(invalidResult.success).toBe(false)
+    if (!invalidResult.success) {
+      expect(getZodFieldErrors(invalidResult.error)).toEqual({
+        code: "Enter a valid pickup code.",
+      })
+    }
   })
 })

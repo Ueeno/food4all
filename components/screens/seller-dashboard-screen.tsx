@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Image from "next/image"
 import { useEffect, useState } from "react"
@@ -25,6 +25,7 @@ export function SellerDashboardScreen() {
 
   const [dashboard, setDashboard] = useState<SellerDashboard | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const metricDisplay: Record<SellerDashboardMetricKey, { icon: typeof TrendingUp; color: string }> = {
     revenue: { icon: TrendingUp, color: "#38a8e8" },
@@ -37,12 +38,23 @@ export function SellerDashboardScreen() {
     let ignore = false
 
     async function loadDashboard() {
-      const nextDashboard = await getSellerDashboard()
+      try {
+        setError(null)
+        setLoading(true)
+        const nextDashboard = await getSellerDashboard()
 
-      if (ignore) return
+        if (ignore) return
 
-      setDashboard(nextDashboard)
-      setLoading(false)
+        setDashboard(nextDashboard)
+      }catch {
+        if (!ignore) {
+          setError("Failed to load dashboard metrics.")
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
+      }
     }
 
     loadDashboard()
@@ -55,7 +67,28 @@ export function SellerDashboardScreen() {
   if (loading || !dashboard) {
     return (
       <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
-        <LoadingView label="Loading seller dashboard..." className="flex-1" />
+        {error ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6">
+            <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+            <h2 className="text-lg font-bold text-foreground mb-2">Failed to load dashboard</h2>
+            <p className="text-sm text-muted-foreground text-center mb-6">{error}</p>
+            <AppButton
+              variant="outline"
+              onClick={() => {
+                setLoading(true)
+                setError(null)
+                getSellerDashboard()
+                  .then(setDashboard)
+                  .catch(() => setError("Failed to load dashboard metrics."))
+                  .finally(() => setLoading(false))
+              }}
+            >
+              Try Again
+            </AppButton>
+          </div>
+        ) : (
+          <LoadingView label="Loading seller dashboard..." className="flex-1" />
+        )}
         <BottomNav />
       </div>
     )

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAppState } from "@/lib/app-state"
 import { getBuyerOrders } from "@/lib/services/order-service"
+import type { Order } from "@/lib/types"
 import { BottomNav } from "@/components/bottom-nav"
 import { EmptyStateWidget, LoadingView } from "@/components/food4all"
 import { GlassButton } from "@/components/glass-button"
@@ -17,49 +18,43 @@ import {
   ShieldCheck,
   Bell,
   LogOut,
-  TrendingDown,
   Leaf,
   Award,
-  Timer,
   QrCode,
   Settings,
   HelpCircle,
   ChevronDown,
 } from "lucide-react"
 
-// ─── Countdown Badge ────────────────────────────────────────────
-function CountdownBadge({ hours }: { hours: number }) {
-  const isUrgent = hours <= 4
-  return (
-    <div
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-        isUrgent ? "badge-urgency" : "bg-primary/10 text-primary"
-      }`}
-    >
-      <Timer className="w-3.5 h-3.5" />
-      {isUrgent ? `Pickup within ${hours}h` : `${hours}h to pickup`}
-    </div>
-  )
-}
-
 // ─── QR Pickup Confirmation Screen ─────────────────────────────
 export function BuyerPickupQRScreen() {
-  const { navigate } = useAppState()
+  const { navigate, selectedOrder } = useAppState()
   const [claimed, setClaimed] = useState(false)
 
-  const pickupCode = "F4A-7X29"
-  const order = {
-    id: "ORD-2847",
-    product: "Purefoods Tender Juicy Hotdog",
-    qty: 3,
-    total: 555,
-    savings: 240,
-    pickupDate: "April 30, 2026",
-    pickupTime: "2:00 PM",
-    deadline: "5:00 PM today",
-    hoursLeft: 3,
-    seller: "Magsaysay Meat Depot",
-    address: "Magsaysay Market, Poblacion District, Davao City",
+  const pickupCode = selectedOrder?.pickupCode?.trim() ?? ""
+  const pickupCodeLabel = pickupCode || "Pickup code unavailable"
+
+  if (!selectedOrder) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="sky-gradient-deep pt-12 pb-6 px-5 shrink-0">
+          <h1 className="text-white font-black text-2xl">Pickup QR</h1>
+          <p className="text-white/65 text-xs mt-0.5">Select a ready order to view pickup details</p>
+        </div>
+        <EmptyStateWidget
+          icon={QrCode}
+          title="No pickup order selected"
+          description="Open a ready order from My Orders or complete checkout to view pickup details."
+          className="flex-1 px-8 -mt-4"
+          action={
+            <GlassButton variant="primary" size="md" onClick={() => navigate("buyer-orders")}>
+              View Orders
+            </GlassButton>
+          }
+        />
+        <BottomNav />
+      </div>
+    )
   }
 
   if (claimed) {
@@ -78,22 +73,18 @@ export function BuyerPickupQRScreen() {
               <CheckCircle2 className="w-10 h-10" style={{ color: "var(--success)" }} />
             </div>
             <h1 className="text-2xl font-black text-foreground mb-2">Pickup Complete!</h1>
-            <p className="text-muted-foreground text-sm mb-1">Order {order.id} has been claimed.</p>
+            <p className="text-muted-foreground text-sm mb-1">Order {selectedOrder.id} has been claimed.</p>
             <p className="text-xs text-muted-foreground mb-6">
               Thank you for choosing near-expiry food. You helped reduce waste!
             </p>
             <div className="glass rounded-2xl p-4 mb-5 text-left space-y-2">
               <div className="flex justify-between">
                 <span className="text-xs text-muted-foreground">Product</span>
-                <span className="text-xs font-semibold text-foreground line-clamp-1 max-w-[55%] text-right">{order.product}</span>
+                <span className="text-xs font-semibold text-foreground line-clamp-1 max-w-[55%] text-right">{selectedOrder.product}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-muted-foreground">Total Paid</span>
-                <span className="text-sm font-black text-primary">₱{order.total}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-muted-foreground">You Saved</span>
-                <span className="text-xs font-bold" style={{ color: "var(--success)" }}>₱{order.savings}</span>
+                <span className="text-sm font-black text-primary">₱{selectedOrder.total}</span>
               </div>
             </div>
             <GlassButton variant="primary" size="lg" fullWidth onClick={() => navigate("buyer-orders")}>
@@ -128,17 +119,12 @@ export function BuyerPickupQRScreen() {
       </div>
 
       <div className="relative z-10 flex-1 overflow-y-auto px-5 pb-8" style={{ scrollbarWidth: "none" }}>
-        {/* Deadline urgency strip */}
-        <div className="flex justify-center mb-4">
-          <CountdownBadge hours={order.hoursLeft} />
-        </div>
-
         {/* QR card */}
         <div className="glass-card-strong rounded-3xl p-6 shadow-2xl mb-4">
           {/* QR code SVG */}
           <div className="w-52 h-52 mx-auto mb-4 bg-white rounded-2xl p-3 shadow-inner flex items-center justify-center">
             <svg width="168" height="168" viewBox="0 0 168 168" xmlns="http://www.w3.org/2000/svg"
-              aria-label={`QR Code for pickup code ${pickupCode}`}>
+              aria-label={pickupCode ? `QR Code for pickup code ${pickupCode}` : pickupCodeLabel}>
               {/* Top-left finder */}
               <rect x="8" y="8" width="44" height="44" rx="5" fill="none" stroke="#0f172a" strokeWidth="4" />
               <rect x="16" y="16" width="28" height="28" rx="3" fill="#0f172a" />
@@ -184,14 +170,18 @@ export function BuyerPickupQRScreen() {
               Pickup Code
             </p>
             <div className="flex items-center justify-center gap-2">
-              {pickupCode.split("").map((char, i) => (
-                <span key={i}
-                  className={`font-black text-2xl tracking-tight ${
-                    char === "-" ? "text-muted-foreground/40 text-lg" : "text-primary"
-                  }`}>
-                  {char}
-                </span>
-              ))}
+              {pickupCode ? (
+                pickupCode.split("").map((char, i) => (
+                  <span key={i}
+                    className={`font-black text-2xl tracking-tight ${
+                      char === "-" ? "text-muted-foreground/40 text-lg" : "text-primary"
+                    }`}>
+                    {char}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm font-bold text-muted-foreground">{pickupCodeLabel}</span>
+              )}
             </div>
           </div>
 
@@ -201,17 +191,17 @@ export function BuyerPickupQRScreen() {
               {
                 icon: <Package className="w-4 h-4 text-white" />,
                 label: "Order",
-                value: `${order.id} · ₱${order.total}`,
+                value: `${selectedOrder.id} · ${selectedOrder.product} · Qty ${selectedOrder.quantity} · ₱${selectedOrder.total}`,
               },
               {
                 icon: <Clock className="w-4 h-4 text-white" />,
                 label: "Pickup Window",
-                value: `${order.pickupDate} · ${order.pickupTime} – ${order.deadline}`,
+                value: `${selectedOrder.pickupDate} · ${selectedOrder.pickupTime}`,
               },
               {
                 icon: <MapPin className="w-4 h-4 text-white" />,
                 label: "Pickup Location",
-                value: order.address,
+                value: "Pickup location unavailable",
               },
             ].map(({ icon, label, value }) => (
               <div key={label} className="flex items-start gap-3 bg-muted/60 rounded-2xl p-3">
@@ -226,15 +216,10 @@ export function BuyerPickupQRScreen() {
             ))}
           </div>
 
-          {/* Savings strip */}
-          <div className="mt-4 rounded-2xl px-4 py-3 flex items-center gap-2 border"
-            style={{
-              background: "var(--success-bg)",
-              borderColor: "oklch(0.50 0.16 142 / 0.2)"
-            }}>
-            <TrendingDown className="w-4 h-4 shrink-0" style={{ color: "var(--success)" }} />
-            <p className="text-xs font-semibold" style={{ color: "var(--success)" }}>
-              You saved <span className="font-black">₱{order.savings}</span> by buying near-expiry food!
+          <div className="mt-4 rounded-2xl px-4 py-3 flex items-center gap-2 border border-primary/20 bg-primary/8">
+            <Package className="w-4 h-4 shrink-0 text-primary" />
+            <p className="text-xs font-semibold text-primary">
+              Show this order at pickup. Seller verification remains a separate future workflow.
             </p>
           </div>
         </div>
@@ -265,7 +250,7 @@ export function BuyerPickupQRScreen() {
 // ─── Orders Screen ─────────────────────────────────────────────
 type OrderTab = "pending" | "ready" | "claimed" | "cancelled"
 
-const STATUS_TO_TAB: Record<string, OrderTab> = {
+const STATUS_TO_TAB: Record<Order["status"], OrderTab> = {
   reserved: "pending",
   preparing: "pending",
   ready: "ready",
@@ -273,45 +258,27 @@ const STATUS_TO_TAB: Record<string, OrderTab> = {
   cancelled: "cancelled",
 }
 
-type OrderCard = {
-  id: string
-  item: string
-  qty: number
-  total: number
-  seller: string
-  status: OrderTab
-  date: string
-  pickupCode: string
-  pickupTime: string
+function getOrderTab(order: Order) {
+  return STATUS_TO_TAB[order.status]
 }
 
 export function BuyerOrdersScreen() {
-  const { navigate } = useAppState()
+  const { navigate, selectOrder } = useAppState()
   const [activeTab, setActiveTab] = useState<OrderTab>("ready")
-  const [orders, setOrders] = useState<OrderCard[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true)
+  const fetchOrders = useCallback(async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
+    if (showLoading) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
       const fetched = await getBuyerOrders()
 
-      setOrders(
-        fetched.map((order) => ({
-          id: order.id,
-          item: order.product,
-          qty: order.quantity,
-          total: order.total,
-          seller: order.buyer,
-          status: STATUS_TO_TAB[order.status] ?? "pending",
-          date: order.pickupDate,
-          pickupCode: order.pickupCode,
-          pickupTime: order.pickupTime,
-        })),
-      )
+      setOrders(fetched)
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to load orders."
@@ -323,17 +290,19 @@ export function BuyerOrdersScreen() {
   }, [])
 
   useEffect(() => {
-    void fetchOrders()
+    queueMicrotask(() => {
+      void fetchOrders({ showLoading: false })
+    })
   }, [fetchOrders])
 
   const tabs: { key: OrderTab; label: string; count: number }[] = [
-    { key: "pending", label: "Pending", count: orders.filter(o => o.status === "pending").length },
-    { key: "ready", label: "Ready", count: orders.filter(o => o.status === "ready").length },
-    { key: "claimed", label: "Claimed", count: orders.filter(o => o.status === "claimed").length },
-    { key: "cancelled", label: "Cancelled", count: orders.filter(o => o.status === "cancelled").length },
+    { key: "pending", label: "Pending", count: orders.filter((order) => getOrderTab(order) === "pending").length },
+    { key: "ready", label: "Ready", count: orders.filter((order) => getOrderTab(order) === "ready").length },
+    { key: "claimed", label: "Claimed", count: orders.filter((order) => getOrderTab(order) === "claimed").length },
+    { key: "cancelled", label: "Cancelled", count: orders.filter((order) => getOrderTab(order) === "cancelled").length },
   ]
 
-  const filtered = orders.filter(o => o.status === activeTab)
+  const filtered = orders.filter((order) => getOrderTab(order) === activeTab)
   const totalSaved = 0
 
   const statusStyle: Record<OrderTab, { label: string; dotColor: string; pill: string; text: string }> = {
@@ -442,13 +411,19 @@ export function BuyerOrdersScreen() {
             ) : (
               <div className="flex flex-col gap-3">
                 {filtered.map((order) => {
-                  const st = statusStyle[order.status]
+                  const orderTab = getOrderTab(order)
+                  const st = statusStyle[orderTab]
                   return (
                     <button
                       key={order.id}
-                      onClick={() => order.status === "ready" ? navigate("buyer-pickup-qr") : undefined}
+                      onClick={() => {
+                        if (orderTab !== "ready") return
+
+                        selectOrder(order)
+                        navigate("buyer-pickup-qr")
+                      }}
                       className="glass-card rounded-2xl shadow-md text-left hover:shadow-lg active:scale-[0.99] transition-all overflow-hidden w-full"
-                      aria-label={`Order ${order.id}, ${order.status}`}
+                      aria-label={`Order ${order.id}, ${orderTab}`}
                     >
                       {/* Top row */}
                       <div className="flex gap-3 p-4 pb-3">
@@ -461,22 +436,22 @@ export function BuyerOrdersScreen() {
                             </span>
                           </div>
                           <p className="text-sm font-bold text-foreground line-clamp-1 mb-0.5">
-                            {order.item}
+                            {order.product}
                           </p>
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0 pt-0.5">{order.date}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0 pt-0.5">{order.pickupDate}</span>
                       </div>
 
                       {/* Price row */}
                       <div className="px-4 pb-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-primary font-black text-sm">₱{order.total}</span>
-                          <span className="text-[10px] text-muted-foreground">Qty: {order.qty}</span>
+                          <span className="text-[10px] text-muted-foreground">Qty: {order.quantity}</span>
                         </div>
                       </div>
 
                       {/* CTA strip for ready orders */}
-                      {order.status === "ready" && (
+                      {orderTab === "ready" && (
                         <div className="sky-gradient px-4 py-3 flex items-center justify-between">
                           <div>
                             <p className="text-white/80 text-[9px] font-medium">Ready for Pickup</p>
@@ -491,11 +466,11 @@ export function BuyerOrdersScreen() {
                       )}
 
                       {/* Pickup time for pending */}
-                      {order.status === "pending" && (
+                      {orderTab === "pending" && (
                         <div className="px-4 pb-3 flex items-center gap-1.5">
                           <Clock className="w-3 h-3 text-muted-foreground" />
                           <p className="text-[10px] text-muted-foreground">
-                            Pickup scheduled: {order.date} at {order.pickupTime}
+                            Pickup scheduled: {order.pickupDate} at {order.pickupTime}
                           </p>
                         </div>
                       )}

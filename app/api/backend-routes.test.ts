@@ -8,10 +8,14 @@ import { POST as login } from "@/app/api/auth/login/route"
 import { GET as me } from "@/app/api/auth/me/route"
 import { POST as logout } from "@/app/api/auth/logout/route"
 import { POST as register } from "@/app/api/auth/register/route"
+import { PATCH as setRole } from "@/app/api/auth/role/route"
 import {
   GET as getOrders,
   POST as createOrder,
 } from "@/app/api/orders/route"
+import { GET as getSellerOrdersRoute } from "@/app/api/seller/orders/route"
+import { PATCH as updateSellerOrderStatus } from "@/app/api/seller/orders/[id]/status/route"
+import { POST as verifyPickup } from "@/app/api/pickup/verify/route"
 import {
   DELETE as clearCart,
   GET as getCart,
@@ -30,6 +34,7 @@ import {
   PATCH as updateSellerProduct,
 } from "@/app/api/seller/products/[id]/route"
 import { SESSION_COOKIE_NAME } from "@/lib/api/auth"
+import { getPrisma } from "@/lib/prisma"
 import {
   resetTestDatabase,
   setupTestDatabase,
@@ -115,6 +120,31 @@ function validSellerProductInput(overrides: Record<string, unknown> = {}) {
     imageUrl: "/images/hotdogs.jpg",
     ...overrides,
   }
+}
+
+async function createReadyOrderForProduct(productId: string) {
+  const buyerCookie = await loginAs("buyer@example.test")
+
+  await addCartItem(
+    jsonRequest("/api/cart/items", { productId, quantity: 1 }, buyerCookie),
+  )
+
+  const response = await createOrder(
+    jsonRequest("/api/orders", { pickupDate: "2030-06-01", pickupTime: "2:00 PM" }, buyerCookie),
+  )
+  const body = await responseJson(response)
+  const order = (body.data as { order: { id: string; pickupCode: string } }).order
+
+  await getPrisma().order.update({
+    where: {
+      id: order.id,
+    },
+    data: {
+      status: "ready",
+    },
+  })
+
+  return order
 }
 
 describe("backend route handlers", () => {
@@ -1196,5 +1226,395 @@ describe("backend route handlers", () => {
 
     expect(order.total).toBe(740)
     expect(order.items[0]!.subtotal).toBe(740)
+  })
+
+  // ─── Seller orders tests ─────────────────────────────────────
+
+  it("GET /api/seller/orders returns 401 when unauthenticated", async () => {
+    const response = await getSellerOrdersRoute(getRequest("/api/seller/orders"))
+
+    expect(response.status).toBe(401)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    })
+  })
+
+  it("GET /api/seller/orders returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await getSellerOrdersRoute(getRequest("/api/seller/orders", buyerCookie))
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("GET /api/seller/orders returns only the authenticated seller's orders, newest first, with completed status from verification", async () => {
+    const order1 = await createReadyOrderForProduct("test-product-active")
+    const order2 = await createReadyOrderForProduct("test-other-seller-product")
+
+    const sellerCookie = await loginAs("seller@example.test")
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: order1.pickupCode }, sellerCookie))
+
+    const response = await getSellerOrdersRoute(getRequest("/api/seller/orders", sellerCookie))
+    const body = await responseJson(response)
+    const orders = (body.data as { orders: { id: string; status: string }[] }).orders
+
+    expect(response.status).toBe(200)
+    expect(orders).toHaveLength(1)
+    expect(orders[0]!.id).toBe(order1.id)
+    expect(orders[0]!.status).toBe("completed")
+
+    const otherSellerCookie = await loginAs("other-seller@example.test")
+    const otherResponse = await getSellerOrdersRoute(getRequest("/api/seller/orders", otherSellerCookie))
+    const otherBody = await responseJson(otherResponse)
+    const otherOrders = (otherBody.data as { orders: { id: string; status: string }[] }).orders
+
+    expect(otherOrders).toHaveLength(1)
+    expect(otherOrders[0]!.id).toBe(order2.id)
+    expect(otherOrders[0]!.status).toBe("ready")
+  })
+
+  // ─── Seller order status tests ────────────────────────────────
+
+  it("PATCH /api/seller/orders/[id]/status returns 401 when unauthenticated", async () => {
+    const response = await updateSellerOrderStatus(
+      jsonRequest("/api/seller/orders/ORD-123/status", { status: "ready" }),
+      { params: Promise.resolve({ id: "ORD-123" }) }
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it("PATCH /api/seller/orders/[id]/status returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await updateSellerOrderStatus(
+      jsonRequest("/api/seller/orders/ORD-123/status", { status: "ready" }, buyerCookie),
+     { params: Promise.resolve({ id: "ORD-123" }) }
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it("PATCH /api/seller/orders/[id]/status returns 404 for missing orders", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await updateSellerOrderStatus(
+      jsonRequest("/api/seller/orders/MISSING/status", { status: "ready" }, sellerCookie),
+      { params: Promise.resolve({ id: "MISSING" }) },
+    )
+
+    expect(response.status).toBe(404)
+  })
+
+  it("PATCH /api/seller/orders/[id]/status returns 403 for another seller's order", async () => {
+    const order = await createReadyOrderForProduct("test-other-seller-product")
+    const sellerCookie = await loginAs("seller@example.test")
+    
+    const response = await updateSellerOrderStatus(
+      jsonRequest(`/api/seller/orders/${order.id}/status`, { status: "cancelled" }, sellerCookie),
+      { params: Promise.resolve({ id: order.id }) },
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it("PATCH /api/seller/orders/[id]/status blocks invalid status transitions", async () => {
+    const order = await createReadyOrderForProduct("test-product-active")
+    const sellerCookie = await loginAs("seller@example.test")
+
+    const invalidTransitionResponse = await updateSellerOrderStatus(
+      jsonRequest(`/api/seller/orders/${order.id}/status`, { status: "preparing" }, sellerCookie),
+      { params: Promise.resolve({ id: order.id }) },
+    )
+
+    expect(invalidTransitionResponse.status).toBe(409)
+
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie))
+
+    const completedTransitionResponse = await updateSellerOrderStatus(
+      jsonRequest(`/api/seller/orders/${order.id}/status`, { status: "cancelled" }, sellerCookie),
+      { params: Promise.resolve({ id: order.id }) },
+    )
+
+    expect(completedTransitionResponse.status).toBe(409)
+  })
+
+  it("PATCH /api/seller/orders/[id]/status allows valid transition from reserved to ready", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    await addCartItem(
+      jsonRequest("/api/cart/items", { productId: "test-product-active", quantity: 1 }, buyerCookie),
+    )
+    const createResponse = await createOrder(
+      jsonRequest("/api/orders", { pickupDate: "2030-06-01", pickupTime: "2:00 PM" }, buyerCookie),
+    )
+    const body = await responseJson(createResponse)
+    const orderId = (body.data as { order: { id: string } }).order.id
+
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await updateSellerOrderStatus(
+      jsonRequest(`/api/seller/orders/${orderId}/status`, { status: "ready" }, sellerCookie),
+      { params: Promise.resolve({ id: orderId }) },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        order: expect.objectContaining({ id: orderId, status: "ready" })
+      }
+    })
+  })
+
+  it("PATCH /api/seller/orders/[id]/status allows valid transition to cancelled", async () => {
+    const order = await createReadyOrderForProduct("test-product-active")
+    const sellerCookie = await loginAs("seller@example.test")
+
+    const response = await updateSellerOrderStatus(
+      jsonRequest(`/api/seller/orders/${order.id}/status`, { status: "cancelled" }, sellerCookie),
+      { params: Promise.resolve({ id: order.id }) },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        order: expect.objectContaining({ id: order.id, status: "cancelled" })
+      }
+    })
+  })
+
+  // ─── Pickup verification tests ───────────────────────────────
+
+  it("POST /api/pickup/verify returns 401 when unauthenticated", async () => {
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: "F4A-TEST" }),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    })
+  })
+
+  it("POST /api/pickup/verify returns 403 for buyer users", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: "F4A-TEST" }, buyerCookie),
+    )
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("POST /api/pickup/verify returns validation errors for missing or invalid codes", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const missingResponse = await verifyPickup(
+      jsonRequest("/api/pickup/verify", {}, sellerCookie),
+    )
+    const invalidResponse = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: "BAD" }, sellerCookie),
+    )
+
+    expect(missingResponse.status).toBe(422)
+    await expect(responseJson(missingResponse)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        fieldErrors: {
+          code: "Pickup code is required.",
+        },
+      },
+    })
+    expect(invalidResponse.status).toBe(422)
+    await expect(responseJson(invalidResponse)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        fieldErrors: {
+          code: "Enter a valid pickup code.",
+        },
+      },
+    })
+  })
+
+  it("POST /api/pickup/verify blocks another seller's order", async () => {
+    const order = await createReadyOrderForProduct("test-other-seller-product")
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie),
+    )
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("POST /api/pickup/verify completes an owned ready order", async () => {
+    const order = await createReadyOrderForProduct("test-product-active")
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie),
+    )
+    const body = await responseJson(response)
+    const storedOrder = await getPrisma().order.findUnique({
+      where: {
+        id: order.id,
+      },
+      include: {
+        pickupCode: true,
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        code: order.pickupCode,
+        orderId: order.id,
+        status: "valid",
+        message: "Pickup verified successfully.",
+        order: expect.objectContaining({
+          id: order.id,
+          status: "completed",
+          product: "Integration Tender Juicy Hotdog",
+          buyer: "Test Buyer",
+        }),
+      },
+    })
+    expect(storedOrder?.status).toBe("completed")
+    expect(storedOrder?.completedAt).toBeTruthy()
+    expect(storedOrder?.pickupCode?.verifiedAt).toBeTruthy()
+    expect(storedOrder?.pickupCode?.verifiedBySellerUserId).toBe("test-seller-user")
+  })
+
+  it("POST /api/pickup/verify blocks repeat verification", async () => {
+    const order = await createReadyOrderForProduct("test-product-active")
+    const sellerCookie = await loginAs("seller@example.test")
+
+    await verifyPickup(jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie))
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: order.pickupCode }, sellerCookie),
+    )
+
+    expect(response.status).toBe(409)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Pickup has already been verified.",
+      },
+    })
+  })
+
+  it("POST /api/pickup/verify returns 404 for a missing pickup code", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await verifyPickup(
+      jsonRequest("/api/pickup/verify", { code: "F4A-NOPE" }, sellerCookie),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "NOT_FOUND",
+        message: "Pickup code was not found.",
+      },
+    })
+  })
+
+  it("PATCH /api/auth/role returns 401 when unauthenticated", async () => {
+    const response = await setRole(jsonRequest("/api/auth/role", { role: "buyer" }, undefined, "PATCH"))
+    expect(response.status).toBe(401)
+  })
+
+  it("PATCH /api/auth/role returns validation error for invalid role", async () => {
+    const registerResponse = await register(
+      jsonRequest("/api/auth/register", {
+        firstName: "Test",
+        lastName: "User1",
+        email: "test.role.1@example.test",
+        password: TEST_PASSWORD,
+      })
+    )
+    const cookie = getSessionCookie(registerResponse)
+
+    const response = await setRole(jsonRequest("/api/auth/role", { role: "admin" }, cookie, "PATCH"))
+    
+    expect(response.status).toBe(422)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "VALIDATION_ERROR" },
+    })
+  })
+
+  it("PATCH /api/auth/role sets buyer role for authenticated user", async () => {
+    const registerResponse = await register(
+      jsonRequest("/api/auth/register", {
+        firstName: "Test",
+        lastName: "User2",
+        email: "test.role.2@example.test",
+        password: TEST_PASSWORD,
+      })
+    )
+    const cookie = getSessionCookie(registerResponse)
+
+    const response = await setRole(jsonRequest("/api/auth/role", { role: "buyer" }, cookie, "PATCH"))
+    
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        user: { role: "buyer" },
+      },
+    })
+  })
+
+  it("PATCH /api/auth/role sets seller role and creates profile", async () => {
+    const registerResponse = await register(
+      jsonRequest("/api/auth/register", {
+        firstName: "Test",
+        lastName: "User3",
+        email: "test.role.3@example.test",
+        password: TEST_PASSWORD,
+      })
+    )
+    const cookie = getSessionCookie(registerResponse)
+
+    const response = await setRole(jsonRequest("/api/auth/role", { role: "seller" }, cookie, "PATCH"))
+    
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        user: { role: "seller" },
+      },
+    })
+
+    const meResponse = await me(getRequest("/api/auth/me", cookie))
+    
+    await expect(responseJson(meResponse)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        user: { role: "seller" },
+      },
+    })
+
+    // Verify seller profile exists
+    const prisma = getPrisma()
+    const user = await prisma.user.findUnique({
+      where: { email: "test.role.3@example.test" },
+      include: { sellerProfile: true },
+    })
+    
+    expect(user?.sellerProfile).toBeDefined()
+    expect(user?.sellerProfile?.isOpen).toBe(false)
   })
 })

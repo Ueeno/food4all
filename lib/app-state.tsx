@@ -7,6 +7,7 @@ import type {
   AuthUser,
   CartItem,
   LoginInput,
+  Order,
   RegisterInput,
   UserRole,
 } from "@/lib/types"
@@ -52,11 +53,12 @@ interface AppState {
   isAuthenticated: boolean
   cartItems: CartItem[]
   selectedProductId: string | null
+  selectedOrder: Order | null
   navigate: (screen: Screen) => void
   login: (payload: LoginPayload) => void
   register: (payload: RegisterPayload) => void
   logout: () => void
-  selectRole: (role: AuthRole) => void
+  selectRole: (role: AuthRole) => Promise<void>
   addToCart: (item: CartItem) => void
   updateCartQuantity: (id: string, quantity: number) => void
   incrementCartItem: (id: string) => void
@@ -64,6 +66,7 @@ interface AppState {
   removeFromCart: (id: string) => void
   clearCart: () => void
   selectProduct: (id: string) => void
+  selectOrder: (order: Order | null) => void
   cartCount: number
   cartTotal: number
 }
@@ -179,6 +182,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [selectedRole, setSelectedRole] = useState<UserRole>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>(MOCK_CART)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const skipStorageHydrationRef = useRef(false)
   const cartTouchedRef = useRef(false)
 
@@ -249,6 +253,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(nextState.currentUser)
     setSelectedRole(nextState.selectedRole)
     setSelectedProductId(nextState.selectedProductId)
+    setSelectedOrder(null)
     setScreen(nextState.screen)
     persistAuthState(nextState.currentUser, nextState.selectedRole)
   }, [])
@@ -260,6 +265,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(nextState.currentUser)
     setSelectedRole(nextState.selectedRole)
     setSelectedProductId(nextState.selectedProductId)
+    setSelectedOrder(null)
     setScreen(nextState.screen)
     persistAuthState(nextState.currentUser, nextState.selectedRole)
   }, [])
@@ -271,13 +277,27 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(nextState.currentUser)
     setSelectedRole(nextState.selectedRole)
     setSelectedProductId(nextState.selectedProductId)
+    setSelectedOrder(null)
     setCartItems(nextState.cartItems)
     setScreen(nextState.screen)
     clearLocalStorageValues(SESSION_STORAGE_KEYS)
   }, [])
 
-  const selectRole = useCallback((role: AuthRole) => {
+  const selectRole = useCallback(async (role: AuthRole) => {
     skipStorageHydrationRef.current = true
+
+    if (currentUser && !currentUser.id.startsWith("mock-")) {
+      const updatedUser = await import("@/lib/services/auth-service").then((m) => m.setCurrentUserRole(role))
+      if (!updatedUser) throw new Error("Failed to update role.")
+      
+      const nextState = createRoleSelectionTransition(updatedUser, role)
+      setSelectedRole(nextState.selectedRole)
+      setCurrentUser(nextState.currentUser)
+      setScreen(nextState.screen)
+      persistAuthState(nextState.currentUser, nextState.selectedRole)
+      return
+    }
+
     const nextState = createRoleSelectionTransition(currentUser, role)
 
     setSelectedRole(nextState.selectedRole)
@@ -289,6 +309,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const selectProduct = useCallback((id: string) => {
     skipStorageHydrationRef.current = true
     setSelectedProductId(id)
+  }, [])
+
+  const selectOrder = useCallback((order: Order | null) => {
+    skipStorageHydrationRef.current = true
+    setSelectedOrder(order)
   }, [])
 
   const addToCart = useCallback((item: CartItem) => {
@@ -453,6 +478,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated,
         cartItems,
         selectedProductId,
+        selectedOrder,
         navigate,
         login,
         register,
@@ -465,6 +491,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         removeFromCart,
         clearCart,
         selectProduct,
+        selectOrder,
         cartCount,
         cartTotal,
       }}

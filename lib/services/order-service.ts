@@ -1,6 +1,10 @@
 import { apiRequest } from "@/lib/api-client"
-import type { ApiOrder, CreateOrderRequest } from "@/lib/api-contracts"
-import { SELLER_ORDERS } from "@/lib/mock-data"
+import type {
+  ApiOrder,
+  CreateOrderRequest,
+  PickupVerificationResult,
+  VerifyPickupRequest,
+} from "@/lib/api-contracts"
 import type { Order, PickupVerification } from "@/lib/types"
 
 // ─── DTO mapper ────────────────────────────────────────────────
@@ -43,59 +47,37 @@ export async function getBuyerOrders(): Promise<Order[]> {
   return result.orders.map(toOrder)
 }
 
-// ─── Mock seller operations (not migrated yet) ─────────────────
+export async function getSellerOrders(): Promise<Order[]> {
+  const result = await apiRequest<{ orders: ApiOrder[] }>("/api/seller/orders")
 
-const MOCK_EXTRA_SELLER_ORDERS: Order[] = [
-  {
-    id: "ORD-2851",
-    buyer: "Rosa Gonzales",
-    product: "Hacienda Bacon Strips",
-    quantity: 4,
-    total: 880,
-    status: "completed",
-    pickupDate: "Apr 28, 2026",
-    pickupTime: "3:00 PM",
-    pickupCode: "F4A-8T33",
-  },
-  {
-    id: "ORD-2852",
-    buyer: "Lito Reyes",
-    product: "Purefoods Honeycured Ham",
-    quantity: 2,
-    total: 480,
-    status: "preparing",
-    pickupDate: "May 1, 2026",
-    pickupTime: "12:00 PM",
-    pickupCode: "F4A-2Q71",
-  },
-]
-
-function cloneOrder(order: Order): Order {
-  return { ...order }
+  return result.orders.map(toOrder)
 }
 
-export async function getSellerOrders(): Promise<Order[]> {
-  return [...SELLER_ORDERS, ...MOCK_EXTRA_SELLER_ORDERS].map(cloneOrder)
+export async function updateSellerOrderStatus(orderId: string, status: "preparing" | "ready" | "cancelled"): Promise<Order> {
+  const result = await apiRequest<{ order: ApiOrder }>(`/api/seller/orders/${encodeURIComponent(orderId)}/status`, {
+    method: "PATCH",
+    body: { status },
+  })
+
+  return toOrder(result.order)
 }
 
 export async function verifyPickupCode(code: string): Promise<PickupVerification> {
-  const normalizedCode = code.trim().toUpperCase()
-  const order = [...SELLER_ORDERS, ...MOCK_EXTRA_SELLER_ORDERS].find(
-    (item) => item.pickupCode.toUpperCase() === normalizedCode,
+  const result = await apiRequest<PickupVerificationResult, VerifyPickupRequest>(
+    "/api/pickup/verify",
+    {
+      method: "POST",
+      body: {
+        code,
+      },
+    },
   )
 
-  if (!order) {
-    return {
-      code: normalizedCode,
-      status: "invalid",
-      message: "Pickup code was not found in mock orders.",
-    }
-  }
-
   return {
-    code: normalizedCode,
-    orderId: order.id,
-    status: "valid",
-    message: "Pickup code matches a mock order.",
+    code: result.code,
+    orderId: result.orderId,
+    status: result.status,
+    message: result.message,
+    order: result.order ? toOrder(result.order) : undefined,
   }
 }

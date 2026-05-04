@@ -233,7 +233,7 @@ export function BuyerCartScreen() {
 
 // ─── Checkout Screen ───────────────────────────────────────────
 export function BuyerCheckoutScreen() {
-  const { cartItems, cartTotal, clearCart, navigate } = useAppState()
+  const { cartItems, cartTotal, clearCart, navigate, selectOrder } = useAppState()
   const [loading, setLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
@@ -247,11 +247,12 @@ export function BuyerCheckoutScreen() {
     setCheckoutError(null)
 
     try {
-      await createOrder({
+      const order = await createOrder({
         items: cartItems,
         pickupDate: new Date().toISOString(),
         pickupTime: "2:00 PM",
       })
+      selectOrder(order)
       clearCart()
       navigate("buyer-pickup-qr")
     } catch (error) {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { ApiCartItem, ApiProduct, ApiUser } from "@/lib/api-contracts"
+import type { ApiCartItem, ApiOrder, ApiProduct, ApiUser, PickupVerificationResult } from "@/lib/api-contracts"
 import type { ProductInput } from "@/lib/types"
 import {
   API_PRODUCTS,
@@ -25,6 +25,7 @@ import {
   getProductsByCategory,
   searchProducts,
 } from "./product-service"
+import { verifyPickupCode } from "./order-service"
 import { createProduct, deleteProduct, getSellerProducts, updateProduct } from "./seller-service"
 
 const API_USER: ApiUser = {
@@ -78,6 +79,35 @@ const API_CART_ITEM: ApiCartItem = {
   location: "Magsaysay Market, Davao City",
   lineTotal: 370,
   updatedAt: "2026-05-04T00:00:00.000Z",
+}
+
+const API_ORDER: ApiOrder = {
+  id: "ORD-API-VERIFY",
+  buyer: "Maria Santos",
+  buyerId: "buyer-1",
+  sellerId: "seller-1",
+  product: "API Tender Juicy Hotdog",
+  quantity: 2,
+  total: 370,
+  status: "completed",
+  pickupDate: "2030-06-01T00:00:00.000Z",
+  pickupTime: "2:00 PM",
+  pickupCode: "F4A-API1",
+  items: [
+    {
+      id: "order-item-1",
+      orderId: "ORD-API-VERIFY",
+      productId: "p1",
+      productName: "API Tender Juicy Hotdog",
+      quantity: 2,
+      unitPrice: 185,
+      originalUnitPrice: 285,
+      subtotal: 370,
+    },
+  ],
+  createdAt: "2026-05-04T00:00:00.000Z",
+  updatedAt: "2026-05-04T00:00:00.000Z",
+  completedAt: "2026-05-04T00:00:00.000Z",
 }
 
 const SELLER_PRODUCT_INPUT: ProductInput = {
@@ -397,5 +427,40 @@ describe("API-backed cart service", () => {
     })
     expect((fetchMock.mock.calls[3]?.[1] as RequestInit).method).toBe("DELETE")
     expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe("DELETE")
+  })
+})
+
+describe("API-backed pickup verification service", () => {
+  it("calls the backend pickup verification endpoint and maps the verified order", async () => {
+    const fetchMock = vi.fn(async () =>
+      apiSuccessResponse<PickupVerificationResult>({
+        code: "F4A-API1",
+        orderId: API_ORDER.id,
+        status: "valid",
+        message: "Pickup verified successfully.",
+        order: API_ORDER,
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(verifyPickupCode("F4A-API1")).resolves.toMatchObject({
+      code: "F4A-API1",
+      orderId: "ORD-API-VERIFY",
+      status: "valid",
+      order: {
+        id: "ORD-API-VERIFY",
+        buyer: "Maria Santos",
+        product: "API Tender Juicy Hotdog",
+        status: "completed",
+      },
+    })
+
+    const init = lastFetchInit(fetchMock)
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/pickup/verify", expect.any(Object))
+    expect(init.method).toBe("POST")
+    expect(JSON.parse(String(init.body))).toEqual({
+      code: "F4A-API1",
+    })
   })
 })

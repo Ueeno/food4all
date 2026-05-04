@@ -1,8 +1,9 @@
 import { apiRequest } from "@/lib/api-client"
-import type { ApiProduct, SellerProductRequest } from "@/lib/api-contracts"
-import { PRODUCTS } from "@/lib/mock-data"
-import { getSellerOrders } from "@/lib/services/order-service"
+import type { ApiProduct, SellerDashboardResponse, SellerProductRequest } from "@/lib/api-contracts"
 import type { Product, ProductInput, Seller, SellerDashboard } from "@/lib/types"
+import type { ApiOrder } from "@/lib/api-contracts"
+import type { Order } from "@/lib/types"
+
 
 const MOCK_SELLER: Seller = {
   id: "seller-magsaysay-meat-depot",
@@ -12,8 +13,6 @@ const MOCK_SELLER: Seller = {
   contactNumber: "+63 912 345 6789",
   rating: 4.8,
 }
-
-const mockSellerProducts: Product[] = PRODUCTS.map((product) => ({ ...product }))
 
 function cloneProduct(product: Product): Product {
   return { ...product }
@@ -61,28 +60,31 @@ function productInputPatchToSellerRequest(input: Partial<ProductInput>): Partial
   }
 }
 
+function mapApiOrderToOrder(order: ApiOrder): Order {
+  return {
+    id: order.id,
+    buyer: order.buyer,
+    product: order.product,
+    quantity: order.quantity,
+    total: order.total,
+    status: order.status,
+    pickupDate: order.pickupDate,
+    pickupTime: order.pickupTime,
+    pickupCode: order.pickupCode,
+  }
+}
+
 export async function getSellerProfile(): Promise<Seller> {
   return { ...MOCK_SELLER }
 }
 
 export async function getSellerDashboard(): Promise<SellerDashboard> {
-  const sellerOrders = await getSellerOrders()
-  const pendingOrders = sellerOrders.filter(
-    (order) => order.status === "reserved" || order.status === "ready",
-  )
-  const expiringProducts = mockSellerProducts
-    .filter((product) => product.daysUntilExpiry <= 14)
-    .slice(0, 3)
+  const data = await apiRequest<SellerDashboardResponse>("/api/seller/dashboard")
 
   return {
-    metrics: [
-      { key: "revenue", label: "Today's Revenue", value: "PHP 3,245", trend: "+18%" },
-      { key: "pendingOrders", label: "Pending Orders", value: `${pendingOrders.length}`, trend: "2 new" },
-      { key: "expiringItems", label: "Items Expiring", value: `${expiringProducts.length}`, trend: "Action needed" },
-      { key: "totalSales", label: "Total Sales", value: "PHP 48,920", trend: "+5% week" },
-    ],
-    pendingOrders,
-    expiringProducts: expiringProducts.map(cloneProduct),
+    metrics: data.metrics,
+    pendingOrders: data.pendingOrders.map(mapApiOrderToOrder),
+    expiringProducts: data.expiringProducts.map(cloneProduct),
   }
 }
 

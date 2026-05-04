@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AppStateProvider,
@@ -7,6 +7,8 @@ import {
   type AuthRole,
   type CartItem,
 } from "@/lib/app-state"
+import type { Order } from "@/lib/types"
+import type { ApiOrder } from "@/lib/api-contracts"
 import {
   BuyerCartScreen,
   BuyerCheckoutScreen,
@@ -28,7 +30,7 @@ import {
   SellerVerifyPickupScreen,
 } from "@/components/screens/seller-screens"
 import { LOCAL_STORAGE_KEYS } from "@/lib/local-storage"
-import { apiErrorResponse, installMarketplaceFetchMock } from "@/test/api-fetch-mock"
+import { apiErrorResponse, apiSuccessResponse, installMarketplaceFetchMock } from "@/test/api-fetch-mock"
 
 const TEST_CART_ITEM: CartItem = {
   id: "p1",
@@ -39,6 +41,58 @@ const TEST_CART_ITEM: CartItem = {
   image: "/images/hotdogs.jpg",
   seller: "Magsaysay Meat Depot",
   location: "Magsaysay Market, Davao City",
+}
+
+const READY_API_ORDER: ApiOrder = {
+  id: "ORD-SQL-READY",
+  buyer: "Test Buyer",
+  buyerId: "buyer-1",
+  sellerId: "seller-1",
+  product: "SQL Tender Juicy Hotdog",
+  quantity: 2,
+  total: 370,
+  status: "ready",
+  pickupDate: "2030-06-01",
+  pickupTime: "2:00 PM",
+  pickupCode: "****7X29",
+  items: [
+    {
+      id: "item-1",
+      orderId: "ORD-SQL-READY",
+      productId: "p1",
+      productName: "SQL Tender Juicy Hotdog",
+      quantity: 2,
+      unitPrice: 185,
+      originalUnitPrice: 285,
+      subtotal: 370,
+    },
+  ],
+  createdAt: "2030-06-01T00:00:00.000Z",
+  updatedAt: "2030-06-01T00:00:00.000Z",
+}
+
+const PENDING_API_ORDER: ApiOrder = {
+  ...READY_API_ORDER,
+  id: "ORD-SQL-PENDING",
+  product: "SQL Breakfast Bundle",
+  quantity: 1,
+  total: 220,
+  status: "reserved",
+  pickupDate: "2030-06-02",
+  pickupTime: "11:00 AM",
+  pickupCode: "****1111",
+  items: [
+    {
+      ...READY_API_ORDER.items[0]!,
+      id: "item-2",
+      orderId: "ORD-SQL-PENDING",
+      productName: "SQL Breakfast Bundle",
+      quantity: 1,
+      unitPrice: 220,
+      originalUnitPrice: 320,
+      subtotal: 220,
+    },
+  ],
 }
 
 function getStoredCartItems() {
@@ -113,6 +167,20 @@ function SeedSelectedProduct({ productId }: { productId: string }) {
   return null
 }
 
+function SeedSelectedOrder({ order }: { order: Order }) {
+  const { selectOrder, selectedOrder } = useAppState()
+  const seededRef = useRef(false)
+
+  useEffect(() => {
+    if (!seededRef.current && selectedOrder?.id !== order.id) {
+      seededRef.current = true
+      selectOrder(order)
+    }
+  }, [order, selectOrder, selectedOrder?.id])
+
+  return null
+}
+
 function renderWithAppState(ui: ReactNode, seed?: ReactNode) {
   return render(
     <AppStateProvider>
@@ -129,10 +197,16 @@ function CartCheckoutHarness() {
   return currentScreen === "buyer-checkout" ? <BuyerCheckoutScreen /> : <BuyerCartScreen />
 }
 
-async function advanceTimers(milliseconds: number) {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(milliseconds)
-  })
+function CheckoutPickupHarness() {
+  const { screen: currentScreen } = useAppState()
+
+  return currentScreen === "buyer-pickup-qr" ? <BuyerPickupQRScreen /> : <BuyerCheckoutScreen />
+}
+
+function OrdersPickupHarness() {
+  const { screen: currentScreen } = useAppState()
+
+  return currentScreen === "buyer-pickup-qr" ? <BuyerPickupQRScreen /> : <BuyerOrdersScreen />
 }
 
 beforeEach(() => {
@@ -337,7 +411,7 @@ describe("rendered buyer marketplace flow", () => {
 
   it("renders checkout summary and confirms the reservation through the order API", async () => {
     renderWithAppState(
-      <BuyerCheckoutScreen />,
+      <CheckoutPickupHarness />,
       <>
         <SeedRole role="buyer" />
         <SeedCartItem />
@@ -346,7 +420,7 @@ describe("rendered buyer marketplace flow", () => {
 
     expect(await screen.findByRole("heading", { name: /checkout/i })).toBeInTheDocument()
     expect(screen.getByText("Order Summary")).toBeInTheDocument()
-    expect(screen.getByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+    expect(screen.getByText(/Purefoods Tender Juicy Hotdog/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /confirm reservation/i })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /confirm reservation/i }))
@@ -355,6 +429,10 @@ describe("rendered buyer marketplace flow", () => {
       expect(screen.getByTestId("cart-count")).toHaveTextContent("0")
     })
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
+    expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    expect(screen.getByText(/ORD-MOCK-/)).toBeInTheDocument()
+    expect(screen.getByText(/Purefoods Tender Juicy Hotdog/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/qr code for pickup code f4a-mock/i)).toBeInTheDocument()
     expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
   })
 
@@ -406,64 +484,191 @@ describe("rendered buyer marketplace flow", () => {
   })
 })
 
-describe("rendered remaining buyer mock flows", () => {
-  it("renders buyer order history with mock order cards and pickup action", async () => {
-    renderWithAppState(<BuyerOrdersScreen />, <SeedRole role="buyer" />)
+describe("rendered remaining buyer flows", () => {
+  it("shows a loading state while buyer orders load", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let resolveOrders!: (response: Response) => void
+    const ordersResponse = new Promise<Response>((resolve) => {
+      resolveOrders = resolve
+    })
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders" && (init?.method ?? "GET") === "GET") {
+        return ordersResponse
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<OrdersPickupHarness />, <SeedRole role="buyer" />)
 
     expect(screen.getByRole("heading", { name: /my orders/i })).toBeInTheDocument()
+    expect(screen.getByText("Loading orders...")).toBeInTheDocument()
+
+    resolveOrders(apiSuccessResponse<{ orders: ApiOrder[] }>({ orders: [] }))
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading orders...")).not.toBeInTheDocument()
+    })
+  })
+
+  it("renders buyer orders returned by the SQL-backed order service", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve(
+          apiSuccessResponse<{ orders: ApiOrder[] }>({
+            orders: [READY_API_ORDER, PENDING_API_ORDER],
+          }),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<OrdersPickupHarness />, <SeedRole role="buyer" />)
+
+    expect(await screen.findByText("SQL Tender Juicy Hotdog")).toBeInTheDocument()
     expect(screen.getByText("Total Orders")).toBeInTheDocument()
     expect(screen.getByText("Total Saved")).toBeInTheDocument()
     expect(screen.getByText("Waste Saved")).toBeInTheDocument()
-
-    const readyOrder = screen.getByRole("button", { name: /order ord-2847, ready/i })
-    expect(readyOrder).toBeInTheDocument()
-    expect(screen.getByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
-    expect(screen.getByText(/Magsaysay Meat Depot/)).toBeInTheDocument()
-    expect(screen.getAllByText("Ready").length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText("F4A-7X29")).toBeInTheDocument()
+    expect(screen.getByText("****7X29")).toBeInTheDocument()
     expect(screen.getByText("Show QR")).toBeInTheDocument()
+    expect(screen.queryByText(/Magsaysay Meat Depot/)).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/orders", expect.any(Object))
+
+    fireEvent.click(screen.getByRole("button", { name: /pending/i }))
+
+    expect(screen.getByRole("button", { name: /order ord-sql-pending, pending/i })).toBeInTheDocument()
+    expect(screen.getByText("SQL Breakfast Bundle")).toBeInTheDocument()
+    expect(screen.getByText(/Pickup scheduled: 2030-06-02 at 11:00 AM/)).toBeInTheDocument()
+  })
+
+  it("shows an empty state when the buyer order service returns no orders", async () => {
+    renderWithAppState(<BuyerOrdersScreen />, <SeedRole role="buyer" />)
+
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument()
+    expect(screen.getByText("Your order history will appear here after you reserve food.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /browse deals/i })).toBeInTheDocument()
+  })
+
+  it("shows a visible error and can retry buyer order loading", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let orderReads = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders" && (init?.method ?? "GET") === "GET") {
+        orderReads += 1
+
+        return Promise.resolve(
+          orderReads === 1
+            ? apiErrorResponse("SERVER_ERROR", "Orders are unavailable.", 500)
+            : apiSuccessResponse<{ orders: ApiOrder[] }>({ orders: [READY_API_ORDER] }),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<BuyerOrdersScreen />, <SeedRole role="buyer" />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Orders are unavailable.")
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+
+    expect(await screen.findByText("SQL Tender Juicy Hotdog")).toBeInTheDocument()
+  })
+
+  it("keeps ready order navigation to the pickup QR screen", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve(apiSuccessResponse<{ orders: ApiOrder[] }>({ orders: [READY_API_ORDER] }))
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<OrdersPickupHarness />, <SeedRole role="buyer" />)
+
+    const readyOrder = await screen.findByRole("button", { name: /order ord-sql-ready, ready/i })
 
     fireEvent.click(readyOrder)
 
-    expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
+    await waitFor(() => {
+      expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
+      expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    })
+    expect(screen.getByText(/SQL Tender Juicy Hotdog/)).toBeInTheDocument()
+    expect(screen.getByText(/ORD-SQL-READY/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/qr code for pickup code \*\*\*\*7x29/i)).toBeInTheDocument()
   })
 
-  it("switches buyer order-history tabs and renders status-specific mock details", () => {
-    renderWithAppState(<BuyerOrdersScreen />, <SeedRole role="buyer" />)
+  it("renders selected SQL-backed order details in the pickup QR screen", () => {
+    const order: Order = {
+      id: "ORD-SELECTED-QR",
+      buyer: "Test Buyer",
+      product: "Selected SQL Pickup Bundle",
+      quantity: 4,
+      total: 740,
+      status: "ready",
+      pickupDate: "2030-06-03",
+      pickupTime: "4:00 PM",
+      pickupCode: "F4A-SQL1",
+    }
 
-    fireEvent.click(screen.getByRole("button", { name: /pending/i }))
-    expect(screen.getByRole("button", { name: /order ord-2850, pending/i })).toBeInTheDocument()
-    expect(screen.getByText("Mega Protein Bundle Deal")).toBeInTheDocument()
-    expect(screen.getByText(/Pickup scheduled: May 2, 2026 at 11:00 AM/)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole("button", { name: /claimed/i }))
-    expect(screen.getByRole("button", { name: /order ord-2831, claimed/i })).toBeInTheDocument()
-    expect(screen.getByText("CDO Farmhouse Tocino")).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole("button", { name: /cancelled/i }))
-    expect(screen.getByRole("button", { name: /order ord-2798, cancelled/i })).toBeInTheDocument()
-    expect(screen.getByText("Hacienda Bacon Strips")).toBeInTheDocument()
-  })
-
-  it("renders buyer pickup QR details and claimed confirmation state", () => {
-    renderWithAppState(<BuyerPickupQRScreen />, <SeedRole role="buyer" />)
+    renderWithAppState(
+      <BuyerPickupQRScreen />,
+      <>
+        <SeedRole role="buyer" />
+        <SeedSelectedOrder order={order} />
+      </>,
+    )
 
     expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/qr code for pickup code f4a-7x29/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/qr code for pickup code f4a-sql1/i)).toBeInTheDocument()
     expect(screen.getByText("Pickup Code")).toBeInTheDocument()
-    expect(screen.getByText(/ORD-2847/)).toBeInTheDocument()
-    expect(screen.getByText(/Magsaysay Market/)).toBeInTheDocument()
+    expect(screen.getByText(/ORD-SELECTED-QR/)).toBeInTheDocument()
+    expect(screen.getByText(/Selected SQL Pickup Bundle/)).toBeInTheDocument()
+    expect(screen.getByText(/2030-06-03.*4:00 PM/)).toBeInTheDocument()
+    expect(screen.getByText("Pickup location unavailable")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /share pickup qr/i })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /claim pickup/i }))
 
     expect(screen.getByRole("heading", { name: /pickup complete/i })).toBeInTheDocument()
-    expect(screen.getByText(/Purefoods Tender Juicy Hotdog/)).toBeInTheDocument()
+    expect(screen.getByText(/Selected SQL Pickup Bundle/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /view all orders/i })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /view all orders/i }))
 
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-orders")
+  })
+
+  it("shows a safe pickup fallback when no order is selected", () => {
+    renderWithAppState(<BuyerPickupQRScreen />, <SeedRole role="buyer" />)
+
+    expect(screen.getByRole("heading", { name: /pickup qr/i })).toBeInTheDocument()
+    expect(screen.getByText("No pickup order selected")).toBeInTheDocument()
+    expect(screen.getByText("Open a ready order from My Orders or complete checkout to view pickup details.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /view orders/i })).toBeInTheDocument()
   })
 
   it("renders buyer profile details and profile actions", async () => {
@@ -627,36 +832,149 @@ describe("rendered seller marketplace flow", () => {
     expect(screen.getByText(/F4A-3K85/)).toBeInTheDocument()
   })
 
-  it("renders seller pickup verification and shows invalid code errors", async () => {
-    vi.useFakeTimers()
+  it("marks a reserved order as ready and updates UI", async () => {
+    renderWithAppState(<SellerOrdersScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("heading", { name: /orders/i })).toBeInTheDocument()
+    
+    // In "New" tab (default)
+    expect(screen.getByText("ORD-2847")).toBeInTheDocument()
+
+    // Click "Mark Ready"
+    fireEvent.click(screen.getAllByRole("button", { name: /mark ready/i })[0]!)
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    // Order should disappear from "New" tab
+    await waitFor(() => {
+      expect(screen.queryByText("ORD-2847")).not.toBeInTheDocument()
+    })
+
+    // Click "Ready" tab
+    fireEvent.click(screen.getAllByRole("button", { name: /ready/i })[0]!)
+
+    // Order should now be in the "Ready" tab
+    expect(await screen.findByText("ORD-2847")).toBeInTheDocument()
+  })
+
+  it("shows an error if marking an order as ready fails", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname.match(/\/api\/seller\/orders\/.+\/status$/) && init?.method === "PATCH") {
+        return Promise.resolve(apiErrorResponse("SERVER_ERROR", "Failed to update order status.", 500))
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerOrdersScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("heading", { name: /orders/i })).toBeInTheDocument()
+    expect(screen.getByText("ORD-2850")).toBeInTheDocument()
+
+    const markReadyButtons = screen.getAllByRole("button", { name: /mark ready/i })
+    fireEvent.click(markReadyButtons[markReadyButtons.length - 1]!) // click the one for ORD-2850
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to update order status.")
+    
+    // Order should still be in "New" tab since it failed
+    expect(screen.getByText("ORD-2850")).toBeInTheDocument()
+  })
+
+  it("shows a visible error and can retry seller order loading", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    let orderReads = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/orders" && (init?.method ?? "GET") === "GET") {
+        orderReads += 1
+
+        return Promise.resolve(
+          orderReads === 1
+            ? apiErrorResponse("SERVER_ERROR", "Orders are unavailable.", 500)
+            : baseFetch(input, init),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerOrdersScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Orders are unavailable.")
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+
+    expect(await screen.findByRole("heading", { name: /orders/i })).toBeInTheDocument()
+    expect(screen.getByText("ORD-2847")).toBeInTheDocument()
+  })
+
+  it("renders seller pickup verification and shows validation errors", async () => {
     renderWithAppState(<SellerVerifyPickupScreen />, <SeedRole role="seller" />)
 
     expect(screen.getByRole("heading", { name: /verify pickup/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/pickup code input/i)).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole("button", { name: /confirm pickup/i }))
+
+    expect(screen.getByText("Pickup code is required.")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/pickup code input/i), {
+      target: { value: "BAD" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /confirm pickup/i }))
+
+    expect(screen.getByText("Enter a valid pickup code.")).toBeInTheDocument()
+  })
+
+  it("shows an API error when pickup verification fails", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const failingFetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/pickup/verify") {
+        return Promise.resolve(apiErrorResponse("NOT_FOUND", "Pickup code was not found.", 404))
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", failingFetch)
+    renderWithAppState(<SellerVerifyPickupScreen />, <SeedRole role="seller" />)
+
     fireEvent.change(screen.getByLabelText(/pickup code input/i), {
       target: { value: "F4A-BAD0" },
     })
     fireEvent.click(screen.getByRole("button", { name: /confirm pickup/i }))
-    await advanceTimers(1200)
 
-    expect(screen.getByText("Pickup code was not found in mock orders.")).toBeInTheDocument()
+    expect(await screen.findByText("Pickup code was not found.")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: /pickup confirmed/i })).not.toBeInTheDocument()
   })
 
-  it("renders seller pickup verification success for a valid mock code", async () => {
-    vi.useFakeTimers()
+  it("calls the pickup verification API and shows success for a backend-valid code", async () => {
+    const fetchMock = installMarketplaceFetchMock()
     renderWithAppState(<SellerVerifyPickupScreen />, <SeedRole role="seller" />)
 
     fireEvent.change(screen.getByLabelText(/pickup code input/i), {
-      target: { value: "F4A-7X29" },
+      target: { value: "F4A-3K85" },
     })
     fireEvent.click(screen.getByRole("button", { name: /confirm pickup/i }))
-    await advanceTimers(1200)
 
-    expect(screen.getByRole("heading", { name: /pickup confirmed/i })).toBeInTheDocument()
-    expect(screen.getByText(/ORD-2847/)).toBeInTheDocument()
-    expect(screen.getByText("Maria Santos")).toBeInTheDocument()
-    expect(screen.getByText(/Purefoods Tender Juicy Hotdog x3/)).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: /pickup confirmed/i })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/pickup/verify", expect.any(Object))
+    expect(screen.getByText(/ORD-2848/)).toBeInTheDocument()
+    expect(screen.getByText("Juan dela Cruz")).toBeInTheDocument()
+    expect(screen.getByText(/CDO Farmhouse Tocino x5/)).toBeInTheDocument()
+    expect(screen.getByText("F4A-3K85")).toBeInTheDocument()
   })
 })
 

@@ -211,6 +211,32 @@ export const createOrderSchema = z.object({
   pickupTime: z.string().trim().min(1, "Pickup time is required."),
 })
 
+export const verifyPickupSchema = z.object({
+  code: z
+    .string({
+      required_error: "Pickup code is required.",
+      invalid_type_error: "Pickup code is required.",
+    })
+    .trim()
+    .min(1, "Pickup code is required.")
+    .transform((value) => value.toUpperCase())
+    .refine((value) => /^F4A-[A-Z0-9]{4}$/.test(value), "Enter a valid pickup code."),
+})
+
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(["preparing", "ready", "cancelled"], {
+    required_error: "Status is required.",
+    invalid_type_error: "Invalid status transition.",
+  }),
+})
+
+export const setRoleSchema = z.object({
+  role: z.enum(["buyer", "seller"], {
+    required_error: "Role is required.",
+    invalid_type_error: "Role must be buyer or seller.",
+  }),
+})
+
 export function getZodFieldErrors(error: z.ZodError): Record<string, string> {
   const flattened = error.flatten().fieldErrors
 

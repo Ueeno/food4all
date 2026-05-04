@@ -48,17 +48,20 @@ describe("service contracts", () => {
     const orders = await getSellerOrders()
     expect(orders.length).toBeGreaterThan(0)
 
-    const order = orders.find((item) => item.pickupCode)
+    const order = orders.find((item) => item.status === "ready" && item.pickupCode)
     if (!order) throw new Error("Expected at least one seller order with a pickup code")
 
     const verification = await verifyPickupCode(order.pickupCode)
     expect(verification).toMatchObject({
       status: "valid",
       orderId: order.id,
+      order: expect.objectContaining({
+        id: order.id,
+        status: "completed",
+      }),
     })
 
-    const invalidVerification = await verifyPickupCode("F4A-BAD0")
-    expect(invalidVerification.status).toBe("invalid")
+    await expect(verifyPickupCode("F4A-BAD0")).rejects.toThrow("Pickup code was not found.")
   })
 
   it("returns seller dashboard data and seller products", async () => {

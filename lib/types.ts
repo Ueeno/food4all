@@ -101,6 +101,7 @@ export interface PickupVerification {
   orderId?: string
   status: "valid" | "invalid"
   message: string
+  order?: Order
 }
 
 export interface CreateOrderInput {
