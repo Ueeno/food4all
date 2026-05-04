@@ -1,0 +1,198 @@
+# AGENT.md
+
+This root task log was created during Task 001 because no project-root `AGENT.md` existed. The only pre-existing `AGENT.md` found before work began was `components/food4all_flutter/AGENT.md`.
+
+## Progress Log
+- 2026-05-03: Task 001 completed for the React/Next FOOD4ALL marketplace.
+- Verified package manager: `pnpm`, based on `pnpm-lock.yaml`. No `package-lock.json` or `yarn.lock` was found.
+- Installed dependencies with `corepack pnpm install`.
+- Removed TypeScript build-error hiding from `next.config.mjs`.
+- Added clear `package.json` commands for `dev`, `build`, `lint`, and `typecheck`.
+- Added ESLint flat config for the Next.js app.
+- Fixed the `buyer-home-screen.tsx` product type mismatch by using existing `sellerRating`.
+- Fixed lint blockers exposed by the new lint baseline.
+- Verification passed: `corepack pnpm build`, `corepack pnpm lint`, and `corepack pnpm typecheck`.
+- 2026-05-03: Task 002 completed for the reusable FOOD4ALL UI system baseline.
+- Created `components/food4all/` with `AppButton`, `AppTextField`, `RoleCard`, `ProductCard`, `CategoryCard`, `PriceText`, `ExpiryBadge`, `DiscountBadge`, `DashboardMetricCard`, `EmptyStateWidget`, and `LoadingView`.
+- Aligned core design tokens with the audit baseline: primary `#4DA6FF`, deep blue `#1976D2`, background `#F5FAFF`, and 18px base radius.
+- Migrated key repeated UI patterns in auth forms, role selection, buyer product/category cards, seller dashboard metric cards, cart empty state, and primary checkout/action buttons.
+- Verification passed after Task 002: `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-03: Task 003 completed for the mock/local authentication flow shell and route protection boundaries.
+- Added local auth state in `lib/app-state.tsx`: `currentUser`, `selectedRole`, `authStatus`, `isAuthenticated`, `login`, `register`, `logout`, and `selectRole`.
+- Added guarded screen navigation so buyer-only screens require authenticated buyer state and seller-only screens require authenticated seller state.
+- Added visible login/register validation for required email, valid email format, required password, required names on registration, and minimum 8-character registration password.
+- Wired buyer and seller logout through the shared `logout` action so user state, role state, selected product, local cart, and screen state are cleared consistently.
+- Verification passed after Task 003: `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-03: Task 003 rechecked against `lib/app-state.tsx`, app entry, auth screens, role selection, buyer/seller screens, and navigation wiring; no additional code changes were needed.
+- Verification re-passed for Task 003: `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 004 completed for the frontend API/service contracts and mock service boundary.
+- Added shared domain types in `lib/types.ts` for users, roles, sellers, products, categories, cart items, orders, pickup verification, product inputs, and seller dashboard data.
+- Added typed mock services under `lib/services/`: auth, product, category, cart, order, seller, plus a service barrel export.
+- Updated `lib/mock-data.ts` and `ProductCard` to use shared domain types instead of defining product types inline.
+- Migrated buyer home, buyer product list/categories, buyer product detail, and seller dashboard away from direct `lib/mock-data.ts` imports and onto typed mock service calls.
+- Remaining direct screen-level mock import is documented: `components/screens/seller-screens.tsx` still imports `PRODUCTS` and `SELLER_ORDERS` because migrating that large multi-screen file would be a broader, riskier diff.
+- Verification passed after Task 004: `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 005 completed for remaining seller screen service migration and focused service-contract tests.
+- Migrated `components/screens/seller-screens.tsx` away from direct `PRODUCTS` and `SELLER_ORDERS` imports; seller products, seller orders, pickup verification, and report top products now load through typed services.
+- Added Vitest as the lightweight TypeScript service test runner with `package.json` script `test`.
+- Added `lib/services/services.test.ts` covering product lookup, categories, seller orders and pickup verification, seller dashboard/products, and cart add/update/remove behavior.
+- Verified no direct `lib/mock-data.ts`, `PRODUCTS`, or `SELLER_ORDERS` usage remains under `components/screens/`.
+- Verification passed after Task 005: `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 006 completed for focused local auth guard and screen navigation boundary tests.
+- Extracted the smallest pure guard layer into `lib/navigation-guards.ts` and reused it from `lib/app-state.tsx` without changing the app's screen-state routing model.
+- Added `lib/navigation-guards.test.ts` covering unauthenticated blocked access, buyer-only access, seller-only access, wrong-role fallback screens, public screens, and authenticated role-selection access.
+- Existing service-contract tests remained passing.
+- Verification passed after Task 006: `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 007 completed for focused local auth validation and state-flow tests.
+- Added shared `lib/auth-validation.ts` helpers for login/register validation and wired login/register screens to those helpers.
+- Added shared `lib/local-auth-flow.ts` helpers for local login, register, role selection, auth status, authenticated state, and logout transitions; `lib/app-state.tsx` now uses those helpers.
+- Added `lib/local-auth-flow.test.ts` covering login validation, register validation, valid login/register local auth state, buyer role selection, seller role selection, protected-area access after role selection, and shared logout cleanup.
+- Used focused state/helper tests instead of React Testing Library because the current Vitest setup is node-only and the requested behavior can be verified through the shared app-state transition helpers without adding DOM dependencies.
+- Existing service-contract and navigation-guard tests remained passing.
+- Verification passed after Task 007: `corepack pnpm test`, `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 008 completed for focused rendered component tests around auth screens and profile logout buttons.
+- Added the smallest practical React component test setup for this project: `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, and `jsdom`.
+- Updated `vitest.config.ts` to run jsdom component tests alongside existing lib tests and added `vitest.setup.ts` for jest-dom matchers and React Testing Library cleanup.
+- Updated `AppTextField` to generate a stable input id when one is not supplied, keeping labels accessible for rendered component tests and users.
+- Added `components/screens/auth-screens.test.tsx` covering rendered login form validation and valid local login state, rendered register form validation and valid local register state, rendered role selection for buyer and seller, and rendered buyer/seller profile logout buttons clearing shared auth state.
+- Existing service-contract, navigation-guard, and local auth-flow tests remained passing.
+- Verification passed after Task 008: `corepack pnpm test` (4 files, 31 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 009 completed for focused rendered marketplace mock-flow tests.
+- Added `components/screens/marketplace-flows.test.tsx` covering rendered buyer product cards, product-detail add-to-cart behavior, empty cart state, seeded cart item rendering, remove-from-cart behavior, cart-to-checkout transition, checkout order summary, and mock checkout confirmation to pickup QR state.
+- Added rendered seller tests covering dashboard metrics, seller product listing, seller orders with tab switching, pickup verification screen rendering, invalid pickup code error, and valid mock pickup-code success.
+- Existing service-contract, navigation-guard, local auth-flow, and rendered auth component tests remained passing.
+- Verification passed after Task 009: `corepack pnpm test` (5 files, 42 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 010 completed for local buyer cart quantity update behavior and rendered increment/decrement tests.
+- Added local app-state `updateCartQuantity`, `incrementCartItem`, and `decrementCartItem` behavior so cart items can increase, decrease, and be removed when quantity reaches zero.
+- Wired buyer cart increment/decrement controls and accessible quantity labels to shared local app state while keeping the flow mock/local only.
+- Added rendered cart tests covering adding an existing product, quantity increment, quantity decrement, decrement-at-one removal, updated cart totals, and checkout summary quantities.
+- Existing service-contract, navigation-guard, local auth-flow, rendered auth component, and rendered marketplace-flow tests remained passing.
+- Verification passed after Task 010: `corepack pnpm test` (5 files, 46 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 011 completed for focused rendered coverage of remaining mock buyer and seller flows.
+- Added rendered buyer coverage for order-history cards and tab switching, pickup QR details and claimed confirmation, and buyer profile information/actions.
+- Added rendered seller coverage for add-product form fields and mock submit navigation, reports metrics/chart/top products, and seller profile store details/settings/status toggle.
+- Added small accessibility labels to seller add-product form fields so rendered tests and users can target inputs by name.
+- Documented practical Task 011 limitations: buyer order-history empty state is not reachable with the current hardcoded mock orders, and seller add-product invalid/empty validation is not implemented yet.
+- Existing service-contract, navigation-guard, local auth-flow, rendered auth component, rendered marketplace-flow, and cart quantity tests remained passing.
+- Verification passed after Task 011: `corepack pnpm test` (5 files, 53 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 012 completed for local frontend validation and error-state coverage on the seller add-product mock form.
+- Added local seller add-product validation for required product name, required category, required/positive original and discounted prices, discount range, required expiry date, and optional non-negative whole-number quantity.
+- Added visible inline errors on seller add-product fields and blocked invalid mock submissions before the existing mock loading/navigation flow.
+- Kept the valid seller add-product mock submit behavior unchanged: a valid form still navigates to seller products after the local timer.
+- Added rendered tests for empty seller add-product submission errors, invalid price/discount/quantity errors, blocked invalid navigation, and the existing valid submit path.
+- Verification passed after Task 012: `corepack pnpm test` (5 files, 55 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 013 completed for temporary frontend-only `localStorage` persistence of auth/session/cart state.
+- Added `lib/local-storage.ts` with safe browser-only JSON read/write/remove/clear helpers that tolerate SSR/window absence, missing keys, invalid JSON, invalid shapes, and storage exceptions.
+- Wired `lib/app-state.tsx` to hydrate only valid stored auth user, selected role, and cart items; invalid stored data falls back without crashing.
+- Persisted only local auth user/session, selected role, and cart items. No products, orders, seller reports, tokens, passwords, cookies, backend records, database records, or API calls were persisted.
+- Preserved the current logout UX: because cart belongs to the local session in the existing app state, logout clears stored auth user, selected role, and cart items.
+- Added tests for local-storage helpers, persisted auth/role/cart hydration, malformed storage fallback, logout clearing storage, and cart storage updates/removal through rendered flows.
+- Verification passed after Task 013: `corepack pnpm test` (6 files, 60 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 014 completed for backend/API/database architecture and contract planning before implementation.
+- Added `docs/backend-contract.md` documenting the recommended backend direction: Next.js route handlers, Prisma ORM, SQLite for local development, PostgreSQL-ready schema, bcrypt-compatible password hashing, opaque HTTP-only cookie sessions backed by a session table, and deferred image upload storage.
+- Documented API response envelopes, error format, endpoint list, request/response shapes, auth/session strategy, role and owner access rules, validation rules, database model contract, mock-service migration plan, and phased implementation plan.
+- Added type-only API contracts in `lib/api-contracts.ts` for API envelopes, endpoint names, DTOs, and request/response types. This file does not make network calls or replace mock services.
+- Confirmed no `app/api`, `pages/api`, server, Prisma, database, migration, route handler, or backend dependency was added for Task 014.
+- Verification passed after Task 014: `corepack pnpm test` (6 files, 60 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 015 completed for the backend foundation from `docs/backend-contract.md`.
+- Added the first backend dependencies and local Prisma setup: `prisma`, `@prisma/client`, `@prisma/adapter-better-sqlite3`, `bcryptjs`, and `tsx` for the Prisma seed runner.
+- Added `prisma/schema.prisma` with User, Session, SellerProfile, Category, Product, CartItem, Order, OrderItem, and PickupCode models using local SQLite and cents-based product/order pricing.
+- Added `prisma.config.ts`, `lib/prisma.ts`, Prisma scripts, generated-client ignores, and a seed script with Filipino processed-food categories/products plus local buyer and seller accounts.
+- Added shared backend helpers under `lib/api/` for response envelopes, validation, DTO mapping, and opaque HTTP-only session cookie utilities backed by the Session table.
+- Implemented initial route handlers only: `GET /api/health`, auth register/login/logout/me, `GET /api/categories`, `GET /api/products`, and `GET /api/products/[id]`.
+- Kept frontend screens and mock services unchanged; no real API migration, seller mutations, cart API, order API, pickup API, reports API, image upload, backend deployment config, or UI redesign was added.
+- Added focused backend utility tests for API response envelopes, validation schemas, and DTO mappers.
+- Local database setup was exercised with `corepack pnpm prisma db push` and `corepack pnpm prisma:seed`; pnpm build-script approval for `better-sqlite3` is documented in `package.json` so the native SQLite binding can be built locally.
+- Verification passed after Task 015: `corepack pnpm install`, `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (9 files, 68 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 016 completed for isolated route-handler integration tests against a test SQLite database.
+- Added a test-only database helper in `test/test-db.ts` that targets only `file:./prisma/test.db`, refuses non-test database resets, disconnects cached Prisma clients before database changes, seeds minimal users/categories/products, and restores the original database environment after tests.
+- Added Vitest global setup in `vitest.global-setup.ts` to push the Prisma schema into `prisma/test.db` before tests and remove test database files after the run; `prisma/dev.db` is not touched.
+- Added a Prisma client reset seam in `lib/prisma.ts` so tests can switch to the isolated database without leaking the cached dev client.
+- Updated auth route cookie handling so `GET /api/auth/me` and `POST /api/auth/logout` can read cookies from the actual test `Request` while still supporting the existing Next route-handler cookie path.
+- Added `app/api/backend-routes.test.ts` covering real route-handler behavior for health, categories, product listing/detail/404, buyer and seller registration, duplicate/invalid registration, valid/invalid/missing-field login, authenticated and unauthenticated `me`, and logout session revocation/cookie clearing.
+- Updated `.gitignore` for SQLite test WAL/SHM files and expanded Vitest coverage to include `app/**/*.test.ts`.
+- Confirmed no frontend service migration, seller mutations, cart/order/pickup/report APIs, image upload, deployment config, or UI redesign was added.
+- Verification passed after Task 016: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (10 files, 83 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+
+## Finished
+- Task 001: React/Next marketplace is buildable and type-checkable.
+- Task 002: Reusable FOOD4ALL UI system baseline exists, is typed, and is verified.
+- Task 003: Mock/local auth shell and protected screen boundaries exist and are verified.
+- Task 004: Frontend domain types and typed mock service boundary exist and are verified.
+- Task 005: Seller screens no longer import mock data directly, and focused service-contract tests exist and are verified.
+- Task 006: Local auth guard and screen navigation boundaries have focused pure helper tests and are verified.
+- Task 007: Local auth validation and app-state transition behavior have focused tests and are verified.
+- Task 008: Rendered auth screen and profile logout button tests exist and are verified.
+- Task 009: Rendered buyer cart/checkout and seller product/order/pickup mock-flow tests exist and are verified.
+- Task 010: Buyer cart quantity increment/decrement behavior works in local app state and is covered by rendered tests.
+- Task 011: Remaining mock buyer order-history/pickup/profile and seller add-product/reports/profile rendered coverage exists and is verified.
+- Task 012: Seller add-product local validation blocks invalid mock submissions, shows visible errors, and keeps the valid mock submit path verified.
+- Task 013: Temporary frontend-only `localStorage` persistence restores local auth/session/cart across refresh, safely ignores invalid stored data, and is verified.
+- Task 014: Backend/API/database architecture and typed API contracts are documented and verified without implementing backend code.
+- Task 015: Backend foundation exists with Prisma schema/client setup, local SQLite seed data, response/validation/session helpers, and initial health/auth/category/product-read route handlers.
+- Task 016: Initial backend route handlers are covered by isolated SQLite integration tests that do not mutate `prisma/dev.db`.
+- `build` passes with TypeScript errors no longer hidden.
+- `lint` passes with no warnings or errors.
+- `typecheck` passes.
+- `test` passes with the Vitest service-contract, navigation-guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence baselines, backend response/validation/mapper utility coverage, and isolated backend route-handler integration coverage.
+- Required app-level UI components exist under `components/food4all/`.
+- Key repeated screen patterns now use the app-level UI components.
+- Login/register forms now validate basic input before creating mock authenticated state.
+- Login/register validation is shared and tested for empty inputs, invalid email, and weak/empty password cases.
+- Buyer and seller screen navigation is guarded by local authenticated role state.
+- Guard tests prove unauthenticated users cannot access protected buyer/seller screens, buyers cannot access seller screens, and sellers cannot access buyer screens.
+- Buyer and seller logout now clears local auth and role state consistently.
+- Buyer and seller logout now clears temporary stored auth user, selected role, and cart state consistently.
+- Local auth-flow tests prove login/register create authenticated local state, buyer/seller role selection reaches the correct protected area, and logout clears user, role, product, cart, and screen state.
+- Rendered component tests prove login/register validation messages render, valid auth form submissions update local app state, role selection reaches buyer/seller areas, and buyer/seller profile logout buttons use shared logout behavior.
+- Rendered marketplace tests prove buyer product cards render, add-to-cart updates local cart state, cart empty/filled/remove states render, checkout confirms into pickup QR state, and seller dashboard/products/orders/pickup verification render through mock services.
+- Rendered cart tests prove local quantity increment/decrement behavior updates visible quantities, cart count, cart totals, removal at quantity one, and checkout summary quantities.
+- Rendered Task 011 tests prove buyer order history, pickup QR/claim confirmation, buyer profile, seller add-product form/mock submit, seller reports, and seller profile render their current mock flows.
+- Rendered Task 012 tests prove empty and invalid seller add-product submissions show validation errors and do not navigate, while valid mock submit still reaches seller products.
+- Rendered Task 013 tests prove local auth, selected role, and cart restore from valid temporary storage, malformed storage does not crash the app, logout clears storage, and cart changes write/remove storage.
+- Task 014 contract docs define the backend route map, request/response contracts, database entities, access rules, validation rules, and migration phases for a future backend implementation.
+- Task 015 backend foundation defines and generates the initial Prisma client, seeds local SQLite sample data, and exposes the first route-handler surface without replacing mock frontend services.
+- Task 016 route tests verify the first route-handler surface against `prisma/test.db`, including session cookie creation/revocation and public product/category reads.
+- Key buyer browsing/detail screens and seller screens now read mock data through service contracts instead of direct mock-data imports.
+
+## Unfinished
+- Backend implementation remains incomplete beyond the Task 015 foundation.
+- Production database implementation and migration history remain unfinished; Task 015 used local SQLite `db push` only.
+- Real backend-backed authentication remains unfinished.
+- Real API integration behind the mock service contracts remains unfinished.
+- Real backend API implementation remains unfinished for seller mutations, cart, checkout/orders, pickup verification, dashboard, reports, and seller profile routes.
+- Database migrations remain unfinished.
+- Backend-backed persistent product, cart, order, buyer, and seller data remain unfinished.
+- Product management, checkout, and order workflows remain mock-only.
+- Broader route-handler integration tests remain unfinished for future seller, cart, order, pickup, report, profile, and role-selection endpoints.
+- Broad marketplace integration and e2e test coverage remains unfinished.
+- Rendered component coverage outside auth and logout remains unfinished.
+- Buyer order-history empty-state coverage remains unfinished because the current screen hardcodes at least one mock order in every tab and does not expose a testable empty-data boundary.
+- Browser/e2e tests remain unfinished.
+
+## Partially Finished
+- React/Next marketplace UI exists and compiles.
+- Buyer and seller screens exist, but many flows are still mock-only or local-state-only.
+- State management exists through React context, including local auth state and temporary `localStorage` persistence for auth/session/cart, but it is not backend-backed and is not connected to real services.
+- Backend architecture is planned, typed, and partially implemented at the foundation level with Prisma, helpers, seed data, initial read/auth routes, and isolated route-handler tests.
+- Reusable UI baseline is complete, but not every screen has been fully migrated away from inline layout-specific UI.
+- `LoadingView` exists and compiles, but broader loading-state adoption remains partial because most current flows use local mock timers or no async state.
+- Auth remains frontend-only for the current UI shell; server auth endpoints now exist, but the UI has not migrated to them yet.
+- Service layer is a mock frontend boundary only; it returns Promises but does not call a network API.
+- Service, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, pure navigation boundaries, app-state transitions, key rendered auth/logout behavior, buyer/seller mock marketplace flows, local buyer cart quantity behavior, remaining mock profile/report/order screens, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and initial backend route behavior.
+
+## Broken or Risky
+- No Task 001, Task 002, Task 003, Task 004, Task 005, Task 006, Task 007, Task 008, Task 009, Task 010, Task 011, Task 012, Task 013, Task 014, Task 015, or Task 016 build/typecheck/lint/test blocker remains after verification.
+- The app UI still depends on mock service data and has not migrated to the new API routes.
+- Server auth/session route handlers now exist and have initial integration tests, but they still need rate limiting, hardening, broader auth/role coverage, and frontend migration.
+- The local SQLite runtime depends on `better-sqlite3`; `package.json` allows that package's build script through pnpm so the native binding can be installed locally.
+- Test database schema setup uses `RUST_LOG=debug` and `RUST_BACKTRACE=1` inside the helper because Prisma 7's Windows SQLite schema engine otherwise produced a blank schema-engine error in this environment.
+- UI still has some legacy inline screen-specific patterns, so future feature work should continue migrating only where it reduces repetition or risk.
+- Mock service modules intentionally reset on refresh and are not persistence layers; only auth/session/cart use temporary frontend-only storage.
+- Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
+
+## Current Task
+- Task 016: Completed and verified.
+
+## Next Recommended Work
+- Task 017: Implement the authenticated role-selection route from the contract (`PATCH /api/auth/role`) with isolated route-handler tests, still without migrating frontend services.

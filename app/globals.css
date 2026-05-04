@@ -1,0 +1,314 @@
+﻿@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* â”€â”€â”€ FOOD4ALL â€” Funded Startup Design System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+     Primary:   Sky Blue    #4DA6FF -> trust, tech, clean
+     Surface:   Pure White  #FFFFFF â†’ Shopify/Grab clean cards
+     BG:        Light Blue  #F5FAFF -> subtle off-white page bg
+     Success:   Leaf Green  #16A34A â†’ savings, confirmed, safe
+     Warning:   Amber       #EA580C â†’ urgency, expiry countdown
+     Danger:    Red         #DC2626 â†’ discounts, limited stock
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+  --background:           #F5FAFF;
+  --foreground:           oklch(0.13 0.015 250);     /* #0F172A â€” primary text */
+  --card:                 oklch(1 0 0);              /* #FFFFFF â€” card surface */
+  --card-foreground:      oklch(0.13 0.015 250);
+  --popover:              oklch(1 0 0);
+  --popover-foreground:   oklch(0.13 0.015 250);
+
+  /* Sky Blue primary */
+  --primary:              #4DA6FF;
+  --primary-foreground:   oklch(1 0 0);
+  --primary-light:        #EAF5FF;
+  --primary-dark:         #1976D2;
+
+  /* Semantic surface neutrals */
+  --secondary:            oklch(0.96 0.005 230);
+  --secondary-foreground: oklch(0.25 0.01 250);
+  --muted:                oklch(0.95 0.005 230);
+  --muted-foreground:     oklch(0.52 0.01 250);      /* #64748B */
+  --subtle:               oklch(0.97 0.004 230);     /* hover bg on white cards */
+
+  /* Accents */
+  --accent:               #4DA6FF;
+  --accent-foreground:    oklch(1 0 0);
+
+  /* Semantic status colors */
+  --success:              oklch(0.50 0.16 142);      /* #16A34A green savings */
+  --success-bg:           oklch(0.95 0.06 142);      /* green tint bg */
+  --success-foreground:   oklch(1 0 0);
+
+  --warning:              oklch(0.56 0.17 43);       /* #EA580C orange urgency */
+  --warning-bg:           oklch(0.96 0.05 43);
+  --warning-foreground:   oklch(1 0 0);
+
+  --danger:               oklch(0.50 0.22 27);       /* #DC2626 red discount */
+  --danger-bg:            oklch(0.96 0.06 27);
+  --danger-foreground:    oklch(1 0 0);
+
+  --destructive:          oklch(0.50 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Structure */
+  --border:               oklch(0.91 0.008 230);     /* #E2E8F0 */
+  --border-strong:        oklch(0.82 0.01 230);
+  --input:                oklch(0.96 0.005 230);
+  --ring:                 rgb(77 166 255 / 0.4);
+  --radius:               1.125rem;
+
+  /* Sidebar (matches card) */
+  --sidebar:              oklch(1 0 0);
+  --sidebar-foreground:   oklch(0.13 0.015 250);
+  --sidebar-primary:      #4DA6FF;
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent:       oklch(0.96 0.005 230);
+  --sidebar-accent-foreground: oklch(0.25 0.01 250);
+  --sidebar-border:       oklch(0.91 0.008 230);
+  --sidebar-ring:         rgb(77 166 255 / 0.4);
+
+  /* Chart colors */
+  --chart-1: #4DA6FF;
+  --chart-2: oklch(0.50 0.16 142);
+  --chart-3: oklch(0.56 0.17 43);
+  --chart-4: oklch(0.65 0.18 300);
+  --chart-5: oklch(0.50 0.22 27);
+
+  /* â”€â”€â”€ Glassmorphic overlay tokens (for gradient headers) â”€â”€â”€ */
+  --glass-bg:    oklch(1 0 0 / 0.15);
+  --glass-border: oklch(1 0 0 / 0.35);
+  --glass-shadow: 0 8px 32px oklch(0.35 0.12 235 / 0.15);
+  --glass-blur:  blur(16px);
+
+  /* â”€â”€â”€ Gradient tokens â”€â”€â”€ */
+  --sky-gradient:      linear-gradient(135deg, #1976D2 0%, #4DA6FF 100%);
+  --sky-gradient-deep: linear-gradient(160deg, #1976D2 0%, #2F92E8 48%, #4DA6FF 100%);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+
+  --color-background:         var(--background);
+  --color-foreground:         var(--foreground);
+  --color-card:               var(--card);
+  --color-card-foreground:    var(--card-foreground);
+  --color-popover:            var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary:            var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary:          var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:              var(--muted);
+  --color-muted-foreground:   var(--muted-foreground);
+  --color-accent:             var(--accent);
+  --color-accent-foreground:  var(--accent-foreground);
+  --color-destructive:        var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border:             var(--border);
+  --color-input:              var(--input);
+  --color-ring:               var(--ring);
+  --color-chart-1:            var(--chart-1);
+  --color-chart-2:            var(--chart-2);
+  --color-chart-3:            var(--chart-3);
+  --color-chart-4:            var(--chart-4);
+  --color-chart-5:            var(--chart-5);
+  --radius-sm:   calc(var(--radius) - 4px);
+  --radius-md:   var(--radius);
+  --radius-lg:   calc(var(--radius) + 4px);
+  --radius-xl:   calc(var(--radius) + 10px);
+  --color-sidebar:            var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary:    var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent:     var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border:     var(--sidebar-border);
+  --color-sidebar-ring:       var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    @apply bg-background;
+  }
+}
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   GLASS UTILITIES â€” frosted overlays on gradient headers
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@layer utilities {
+
+  /* Glass panel â€” used on gradient bg (header search, nav overlays) */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* White card â€” primary surface (Shopify/Grab style) */
+  .glass-card {
+    background: oklch(1 0 0);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 3px oklch(0.13 0.015 250 / 0.06), 0 4px 16px oklch(0.13 0.015 250 / 0.04);
+  }
+
+  /* Elevated white card */
+  .glass-card-strong {
+    background: oklch(1 0 0);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px oklch(0.13 0.015 250 / 0.08), 0 8px 24px oklch(0.13 0.015 250 / 0.06);
+  }
+
+  /* PRIMARY button â€” solid sky blue, pill, glossy inner highlight */
+  .glass-btn {
+    background: var(--sky-gradient);
+    border: none;
+    box-shadow:
+      0 4px 20px oklch(0.56 0.19 235 / 0.45),
+      inset 0 1px 0 oklch(1 0 0 / 0.28),
+      inset 0 -1px 0 oklch(0 0 0 / 0.12);
+    transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .glass-btn:hover {
+    box-shadow:
+      0 6px 28px oklch(0.56 0.19 235 / 0.55),
+      inset 0 1px 0 oklch(1 0 0 / 0.32);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
+  }
+  .glass-btn:active {
+    transform: scale(0.97) translateY(1px);
+    box-shadow: 0 2px 10px oklch(0.56 0.19 235 / 0.35);
+    filter: brightness(0.97);
+  }
+
+  /* OUTLINE button â€” white bg, blue border */
+  .glass-btn-outline {
+    background: oklch(1 0 0);
+    border: 1.5px solid var(--primary);
+    color: var(--primary);
+    box-shadow: 0 2px 8px oklch(0.56 0.19 235 / 0.12);
+    transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .glass-btn-outline:hover {
+    background: oklch(0.56 0.19 235 / 0.06);
+    box-shadow: 0 4px 16px oklch(0.56 0.19 235 / 0.2);
+    transform: translateY(-1px);
+  }
+  .glass-btn-outline:active {
+    transform: scale(0.97) translateY(1px);
+  }
+
+  /* Bottom nav â€” white frosted bar */
+  .glass-nav {
+    background: oklch(1 0 0 / 0.94);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -1px 0 var(--border), 0 -4px 16px oklch(0.13 0.015 250 / 0.06);
+  }
+
+  /* Input field */
+  .glass-input {
+    background: oklch(1 0 0);
+    border: 1.5px solid var(--border);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .glass-input:focus {
+    border-color: oklch(0.56 0.19 235 / 0.7);
+    box-shadow: 0 0 0 3px oklch(0.56 0.19 235 / 0.12);
+    outline: none;
+  }
+
+  /* Gradient backgrounds */
+  .sky-gradient      { background: var(--sky-gradient); }
+  .sky-gradient-deep { background: var(--sky-gradient-deep); }
+
+  /* Savings badge â€” bold green */
+  .badge-savings {
+    background: var(--success-bg);
+    color: var(--success);
+    font-weight: 700;
+  }
+
+  /* Urgency / expiry badge â€” orange */
+  .badge-urgency {
+    background: var(--warning-bg);
+    color: var(--warning);
+    font-weight: 700;
+  }
+
+  /* Discount badge â€” red */
+  .badge-discount {
+    background: oklch(0.50 0.22 27);
+    color: white;
+    font-weight: 800;
+  }
+
+  /* Trust badge â€” soft blue */
+  .badge-trust {
+    background: oklch(0.92 0.06 235);
+    color: oklch(0.43 0.20 235);
+    font-weight: 600;
+  }
+
+  /* Glossy top-sheen (for product images etc.) */
+  .glossy-reflect {
+    position: relative;
+    overflow: hidden;
+  }
+  .glossy-reflect::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 45%;
+    background: linear-gradient(to bottom, oklch(1 0 0 / 0.22), oklch(1 0 0 / 0));
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   GLOBAL APP LAYOUT & SYSTEM UTILITIES
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+* { -webkit-tap-highlight-color: transparent; }
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+html, body {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+@media (max-width: 360px) { html { font-size: 14px; } }
+@media (min-width: 361px) and (max-width: 480px) { html { font-size: 15px; } }
+
+@media (min-width: 640px) {
+  html, body { overflow: auto; height: auto; }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .glass-btn { min-height: 48px; }
+}
+
+

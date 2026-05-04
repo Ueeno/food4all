@@ -1,0 +1,195 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../lib/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  buyer
+  seller
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+enum ProductStatus {
+  draft
+  active
+  sold_out
+  expired
+  removed
+}
+
+enum OrderStatus {
+  reserved
+  preparing
+  ready
+  completed
+  cancelled
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  role          Role?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  cartItems     CartItem[]
+  buyerOrders   Order[]        @relation("BuyerOrders")
+  sellerProfile SellerProfile?
+  sessions      Session[]
+}
+
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  sessionHash String    @unique
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model SellerProfile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  businessName       String
+  address            String
+  barangay           String?
+  contactNumber      String
+  rating             Float              @default(0)
+  isOpen             Boolean            @default(true)
+  verificationStatus VerificationStatus @default(pending)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products           Product[]
+  sellerOrders       Order[]            @relation("SellerOrders")
+}
+
+model Category {
+  id        String    @id
+  slug      String    @unique
+  label     String
+  icon      String
+  color     String
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id                   String        @id @default(cuid())
+  sellerId             String
+  categoryId           String
+  name                 String
+  brand                String
+  originalPriceCents   Int
+  discountedPriceCents Int
+  discountPercent      Int
+  imageUrl             String?
+  stockQuantity        Int
+  unit                 String
+  expiryDate           DateTime
+  pickupAddress        String
+  pickupBarangay       String?
+  pickupHours          String
+  description          String
+  weight               String
+  packSize             String
+  isHot                Boolean       @default(false)
+  isFeatured           Boolean       @default(false)
+  status               ProductStatus @default(active)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  seller               SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category             Category      @relation(fields: [categoryId], references: [id])
+  cartItems            CartItem[]
+  orderItems           OrderItem[]
+
+  @@index([categoryId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId])
+}
+
+model Order {
+  id          String        @id @default(cuid())
+  buyerId     String
+  sellerId    String
+  status      OrderStatus   @default(reserved)
+  totalCents  Int
+  pickupDate  DateTime
+  pickupTime  String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
+  buyer       User          @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller      SellerProfile @relation("SellerOrders", fields: [sellerId], references: [id])
+  items       OrderItem[]
+  pickupCode  PickupCode?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model OrderItem {
+  id                     String   @id @default(cuid())
+  orderId                String
+  productId              String?
+  productName            String
+  quantity               Int
+  unitPriceCents         Int
+  originalUnitPriceCents Int
+  subtotalCents          Int
+  createdAt              DateTime @default(now())
+  order                  Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product                Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model PickupCode {
+  id                     String    @id @default(cuid())
+  orderId                String    @unique
+  codeHash               String
+  displayCodeLast4       String?
+  expiresAt              DateTime?
+  verifiedAt             DateTime?
+  verifiedBySellerUserId String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  order                  Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
