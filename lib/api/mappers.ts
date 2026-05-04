@@ -1,4 +1,4 @@
-import type { ApiCategory, ApiProduct, ApiUser } from "@/lib/api-contracts"
+import type { ApiCartItem, ApiCategory, ApiProduct, ApiUser } from "@/lib/api-contracts"
 
 type DbUser = {
   id: string
@@ -47,6 +47,14 @@ type DbProduct = {
     businessName: string
     rating: number
   }
+}
+
+type DbCartItem = {
+  id: string
+  productId: string
+  quantity: number
+  updatedAt: Date
+  product: DbProduct
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -103,5 +111,39 @@ export function mapApiProduct(product: DbProduct, now = new Date()): ApiProduct 
     status: product.status,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
+  }
+}
+
+export function mapApiCartItem(item: DbCartItem): ApiCartItem {
+  const product = item.product
+  const price = centsToPesos(product.discountedPriceCents)
+  const originalPrice = centsToPesos(product.originalPriceCents)
+  const lineTotal = price * item.quantity
+
+  return {
+    id: item.productId,
+    productId: item.productId,
+    name: product.name,
+    price,
+    originalPrice,
+    quantity: item.quantity,
+    image: product.imageUrl ?? "/placeholder.svg",
+    seller: product.seller.businessName,
+    location: product.pickupAddress,
+    lineTotal,
+    updatedAt: item.updatedAt.toISOString(),
+  }
+}
+
+export function mapApiCart(items: DbCartItem[]) {
+  const mappedItems = items.map(mapApiCartItem)
+  const itemCount = mappedItems.reduce((sum, item) => sum + item.quantity, 0)
+  const total = mappedItems.reduce((sum, item) => sum + item.lineTotal, 0)
+
+  return {
+    items: mappedItems,
+    itemCount,
+    subtotal: total,
+    total,
   }
 }

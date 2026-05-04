@@ -30,6 +30,13 @@ import {
   getAuthStatus,
   isAuthenticated as getIsAuthenticated,
 } from "@/lib/local-auth-flow"
+import {
+  addToCart as addToCartService,
+  clearCart as clearCartService,
+  getCart as getCartService,
+  removeFromCart as removeFromCartService,
+  updateCartItem as updateCartItemService,
+} from "@/lib/services/cart-service"
 
 export type { AuthRole, AuthStatus, AuthUser, CartItem, UserRole }
 export type { Screen }
@@ -137,6 +144,35 @@ function persistCartItems(cartItems: CartItem[]) {
   }
 }
 
+function addLocalCartItem(cartItems: CartItem[], item: CartItem) {
+  const existing = cartItems.find((cartItem) => cartItem.id === item.id)
+
+  if (existing) {
+    return cartItems.map((cartItem) =>
+      cartItem.id === item.id
+        ? { ...cartItem, quantity: cartItem.quantity + item.quantity }
+        : cartItem,
+    )
+  }
+
+  return [...cartItems, item]
+}
+
+function updateLocalCartQuantity(cartItems: CartItem[], id: string, quantity: number) {
+  return quantity <= 0
+    ? cartItems.filter((item) => item.id !== id)
+    : cartItems.map((item) => (item.id === id ? { ...item, quantity } : item))
+}
+
+function decrementLocalCartItem(cartItems: CartItem[], id: string) {
+  return cartItems.flatMap((item) => {
+    if (item.id !== id) return [item]
+
+    const nextQuantity = item.quantity - 1
+    return nextQuantity <= 0 ? [] : [{ ...item, quantity: nextQuantity }]
+  })
+}
+
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [screen, setScreen] = useState<Screen>("splash")
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
@@ -144,6 +180,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>(MOCK_CART)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const skipStorageHydrationRef = useRef(false)
+  const cartTouchedRef = useRef(false)
 
   const authStatus: AuthStatus = getAuthStatus(currentUser)
   const isAuthenticated = getIsAuthenticated(currentUser)
@@ -175,6 +212,31 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!currentUser || selectedRole !== "buyer") return
+
+    let ignore = false
+
+    async function loadBuyerCart() {
+      try {
+        const nextItems = await getCartService()
+
+        if (ignore || cartTouchedRef.current) return
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        // The current UI auth shell can be local-only. Keep hydrated local cart as fallback.
+      }
+    }
+
+    loadBuyerCart()
+
+    return () => {
+      ignore = true
+    }
+  }, [currentUser, selectedRole])
 
   const navigate = useCallback((s: Screen) => {
     setScreen(resolveNavigationTarget(s, { currentUser, selectedRole }))
@@ -231,70 +293,150 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = useCallback((item: CartItem) => {
     skipStorageHydrationRef.current = true
-    setCartItems((prev) => {
-      const existing = prev.find((i) => i.id === item.id)
-      if (existing) {
-        const nextItems = prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i,
-        )
-        persistCartItems(nextItems)
-        return nextItems
+    cartTouchedRef.current = true
+
+    async function addBackendCartItem() {
+      try {
+        const nextItems = await addToCartService(item.id, item.quantity)
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        setCartItems((prev) => {
+          const nextItems = addLocalCartItem(prev, item)
+
+          persistCartItems(nextItems)
+          return nextItems
+        })
       }
-      const nextItems = [...prev, item]
-      persistCartItems(nextItems)
-      return nextItems
-    })
+    }
+
+    void addBackendCartItem()
   }, [])
 
   const updateCartQuantity = useCallback((id: string, quantity: number) => {
     skipStorageHydrationRef.current = true
-    setCartItems((prev) => {
-      const nextItems =
-        quantity <= 0
-          ? prev.filter((i) => i.id !== id)
-          : prev.map((i) => (i.id === id ? { ...i, quantity } : i))
+    cartTouchedRef.current = true
 
-      persistCartItems(nextItems)
-      return nextItems
-    })
+    async function updateBackendCartItem() {
+      try {
+        const nextItems = await updateCartItemService(id, quantity)
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        setCartItems((prev) => {
+          const nextItems = updateLocalCartQuantity(prev, id, quantity)
+
+          persistCartItems(nextItems)
+          return nextItems
+        })
+      }
+    }
+
+    void updateBackendCartItem()
   }, [])
 
   const incrementCartItem = useCallback((id: string) => {
     skipStorageHydrationRef.current = true
-    setCartItems((prev) => {
-      const nextItems = prev.map((i) => (i.id === id ? { ...i, quantity: i.quantity + 1 } : i))
-      persistCartItems(nextItems)
-      return nextItems
-    })
-  }, [])
+    cartTouchedRef.current = true
+
+    async function incrementBackendCartItem() {
+      const currentItem = cartItems.find((item) => item.id === id)
+
+      if (!currentItem) return
+
+      const nextQuantity = currentItem.quantity + 1
+
+      try {
+        const nextItems = await updateCartItemService(id, nextQuantity)
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        setCartItems((prev) => {
+          const nextItems = updateLocalCartQuantity(prev, id, nextQuantity)
+
+          persistCartItems(nextItems)
+          return nextItems
+        })
+      }
+    }
+
+    void incrementBackendCartItem()
+  }, [cartItems])
 
   const decrementCartItem = useCallback((id: string) => {
     skipStorageHydrationRef.current = true
-    setCartItems((prev) => {
-      const nextItems = prev.flatMap((i) => {
-        if (i.id !== id) return [i]
+    cartTouchedRef.current = true
 
-        const nextQuantity = i.quantity - 1
-        return nextQuantity <= 0 ? [] : [{ ...i, quantity: nextQuantity }]
-      })
-      persistCartItems(nextItems)
-      return nextItems
-    })
-  }, [])
+    async function decrementBackendCartItem() {
+      const currentItem = cartItems.find((item) => item.id === id)
+
+      if (!currentItem) return
+
+      const nextQuantity = currentItem.quantity - 1
+
+      try {
+        const nextItems = await updateCartItemService(id, nextQuantity)
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        setCartItems((prev) => {
+          const nextItems = decrementLocalCartItem(prev, id)
+
+          persistCartItems(nextItems)
+          return nextItems
+        })
+      }
+    }
+
+    void decrementBackendCartItem()
+  }, [cartItems])
 
   const removeFromCart = useCallback((id: string) => {
     skipStorageHydrationRef.current = true
-    setCartItems((prev) => {
-      const nextItems = prev.filter((i) => i.id !== id)
-      persistCartItems(nextItems)
-      return nextItems
-    })
+    cartTouchedRef.current = true
+
+    async function removeBackendCartItem() {
+      try {
+        const nextItems = await removeFromCartService(id)
+
+        setCartItems(nextItems)
+        persistCartItems([])
+      } catch {
+        setCartItems((prev) => {
+          const nextItems = prev.filter((item) => item.id !== id)
+
+          persistCartItems(nextItems)
+          return nextItems
+        })
+      }
+    }
+
+    void removeBackendCartItem()
   }, [])
 
   const clearCart = useCallback(() => {
     skipStorageHydrationRef.current = true
-    setCartItems([])
-    persistCartItems([])
+    cartTouchedRef.current = true
+
+    async function clearBackendCart() {
+      try {
+        const nextItems = await clearCartService()
+
+        setCartItems(nextItems)
+        persistCartItems(nextItems)
+      } catch {
+        setCartItems([])
+        persistCartItems([])
+      }
+
+      persistCartItems([])
+    }
+
+    void clearBackendCart()
   }, [])
 
   const cartCount = cartItems.reduce((sum, i) => sum + i.quantity, 0)

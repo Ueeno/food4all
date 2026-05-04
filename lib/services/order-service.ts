@@ -1,7 +1,49 @@
+import { apiRequest } from "@/lib/api-client"
+import type { ApiOrder, CreateOrderRequest } from "@/lib/api-contracts"
 import { SELLER_ORDERS } from "@/lib/mock-data"
-import type { CreateOrderInput, Order, PickupVerification } from "@/lib/types"
+import type { Order, PickupVerification } from "@/lib/types"
 
-let mockBuyerOrders: Order[] = []
+// ─── DTO mapper ────────────────────────────────────────────────
+
+function toOrder(apiOrder: ApiOrder): Order {
+  return {
+    id: apiOrder.id,
+    buyer: apiOrder.buyer,
+    product: apiOrder.product,
+    quantity: apiOrder.quantity,
+    total: apiOrder.total,
+    status: apiOrder.status,
+    pickupDate: apiOrder.pickupDate,
+    pickupTime: apiOrder.pickupTime,
+    pickupCode: apiOrder.pickupCode,
+  }
+}
+
+// ─── API-backed buyer order operations ─────────────────────────
+
+export async function createOrder(input: {
+  items: { id: string; name: string; price: number; quantity: number }[]
+  pickupDate: string
+  pickupTime: string
+}): Promise<Order> {
+  const result = await apiRequest<{ order: ApiOrder }, CreateOrderRequest>("/api/orders", {
+    method: "POST",
+    body: {
+      pickupDate: input.pickupDate,
+      pickupTime: input.pickupTime,
+    },
+  })
+
+  return toOrder(result.order)
+}
+
+export async function getBuyerOrders(): Promise<Order[]> {
+  const result = await apiRequest<{ orders: ApiOrder[] }>("/api/orders")
+
+  return result.orders.map(toOrder)
+}
+
+// ─── Mock seller operations (not migrated yet) ─────────────────
 
 const MOCK_EXTRA_SELLER_ORDERS: Order[] = [
   {
@@ -30,33 +72,6 @@ const MOCK_EXTRA_SELLER_ORDERS: Order[] = [
 
 function cloneOrder(order: Order): Order {
   return { ...order }
-}
-
-export async function createOrder(input: CreateOrderInput): Promise<Order> {
-  const total = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const productLabel =
-    input.items.length === 1
-      ? input.items[0]?.name ?? "FOOD4ALL Reservation"
-      : `${input.items.length} reserved products`
-
-  const order: Order = {
-    id: `ORD-MOCK-${Date.now()}`,
-    buyer: "FOOD4ALL Buyer",
-    product: productLabel,
-    quantity: input.items.reduce((sum, item) => sum + item.quantity, 0),
-    total,
-    status: "reserved",
-    pickupDate: input.pickupDate,
-    pickupTime: input.pickupTime,
-    pickupCode: "F4A-MOCK",
-  }
-
-  mockBuyerOrders = [order, ...mockBuyerOrders]
-  return cloneOrder(order)
-}
-
-export async function getBuyerOrders(): Promise<Order[]> {
-  return mockBuyerOrders.map(cloneOrder)
 }
 
 export async function getSellerOrders(): Promise<Order[]> {

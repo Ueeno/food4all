@@ -5,6 +5,7 @@ import { useState } from "react"
 import { useAppState } from "@/lib/app-state"
 import { BottomNav } from "@/components/bottom-nav"
 import { AppButton, EmptyStateWidget } from "@/components/food4all"
+import { createOrder } from "@/lib/services/order-service"
 import {
   ShoppingCart,
   Trash2,
@@ -234,18 +235,32 @@ export function BuyerCartScreen() {
 export function BuyerCheckoutScreen() {
   const { cartItems, cartTotal, clearCart, navigate } = useAppState()
   const [loading, setLoading] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   const savings = cartItems.reduce(
     (sum, item) => sum + (item.originalPrice - item.price) * item.quantity,
     0
   )
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setLoading(true)
-    setTimeout(() => {
+    setCheckoutError(null)
+
+    try {
+      await createOrder({
+        items: cartItems,
+        pickupDate: new Date().toISOString(),
+        pickupTime: "2:00 PM",
+      })
       clearCart()
       navigate("buyer-pickup-qr")
-    }, 1600)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Checkout failed. Please try again."
+
+      setCheckoutError(message)
+      setLoading(false)
+    }
   }
 
   return (
@@ -367,12 +382,17 @@ export function BuyerCheckoutScreen() {
             </div>
           )}
         </div>
+        {checkoutError && (
+          <div role="alert" className="text-xs text-danger font-semibold text-center mb-2">
+            {checkoutError}
+          </div>
+        )}
         <AppButton
           variant="primary"
           size="xl"
           fullWidth
           loading={loading}
-          onClick={handleConfirm}
+          onClick={() => void handleConfirm()}
           className="mb-3"
         >
           Confirm Reservation

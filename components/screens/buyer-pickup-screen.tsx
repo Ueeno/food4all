@@ -1,8 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useAppState } from "@/lib/app-state"
+import { getBuyerOrders } from "@/lib/services/order-service"
 import { BottomNav } from "@/components/bottom-nav"
+import { EmptyStateWidget, LoadingView } from "@/components/food4all"
 import { GlassButton } from "@/components/glass-button"
 import {
   CheckCircle2,
@@ -263,92 +265,76 @@ export function BuyerPickupQRScreen() {
 // ─── Orders Screen ─────────────────────────────────────────────
 type OrderTab = "pending" | "ready" | "claimed" | "cancelled"
 
+const STATUS_TO_TAB: Record<string, OrderTab> = {
+  reserved: "pending",
+  preparing: "pending",
+  ready: "ready",
+  completed: "claimed",
+  cancelled: "cancelled",
+}
+
+type OrderCard = {
+  id: string
+  item: string
+  qty: number
+  total: number
+  seller: string
+  status: OrderTab
+  date: string
+  pickupCode: string
+  pickupTime: string
+}
+
 export function BuyerOrdersScreen() {
   const { navigate } = useAppState()
   const [activeTab, setActiveTab] = useState<OrderTab>("ready")
+  const [orders, setOrders] = useState<OrderCard[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const allOrders = [
-    {
-      id: "ORD-2847",
-      item: "Purefoods Tender Juicy Hotdog",
-      image: "/images/hotdogs.jpg",
-      qty: 3,
-      total: 555,
-      savings: 240,
-      seller: "Magsaysay Meat Depot",
-      branch: "Poblacion District, Davao",
-      status: "ready" as OrderTab,
-      date: "Apr 30, 2026",
-      pickupCode: "F4A-7X29",
-      pickupTime: "2:00 PM",
-    },
-    {
-      id: "ORD-2850",
-      item: "Mega Protein Bundle Deal",
-      image: "/images/bundle.jpg",
-      qty: 1,
-      total: 720,
-      savings: 480,
-      seller: "Magsaysay Meat Depot",
-      branch: "Poblacion District, Davao",
-      status: "pending" as OrderTab,
-      date: "May 2, 2026",
-      pickupCode: "F4A-5P66",
-      pickupTime: "11:00 AM",
-    },
-    {
-      id: "ORD-2831",
-      item: "CDO Farmhouse Tocino",
-      image: "/images/tocino.jpg",
-      qty: 2,
-      total: 280,
-      savings: 100,
-      seller: "Gaisano Grand Davao",
-      branch: "Bajada, Davao City",
-      status: "claimed" as OrderTab,
-      date: "Apr 28, 2026",
-      pickupCode: "F4A-9M12",
-      pickupTime: "10:00 AM",
-    },
-    {
-      id: "ORD-2810",
-      item: "Chicken Nuggets Supreme",
-      image: "/images/nuggets.jpg",
-      qty: 5,
-      total: 575,
-      savings: 400,
-      seller: "Lapanday Cold Storage",
-      branch: "Buhangin, Davao City",
-      status: "claimed" as OrderTab,
-      date: "Apr 25, 2026",
-      pickupCode: "F4A-3K44",
-      pickupTime: "9:00 AM",
-    },
-    {
-      id: "ORD-2798",
-      item: "Hacienda Bacon Strips",
-      image: "/images/bacon.jpg",
-      qty: 2,
-      total: 440,
-      savings: 250,
-      seller: "SM Supermarket Davao",
-      branch: "Matina, Davao City",
-      status: "cancelled" as OrderTab,
-      date: "Apr 22, 2026",
-      pickupCode: "F4A-1W90",
-      pickupTime: "3:00 PM",
-    },
-  ]
+  const fetchOrders = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const fetched = await getBuyerOrders()
+
+      setOrders(
+        fetched.map((order) => ({
+          id: order.id,
+          item: order.product,
+          qty: order.quantity,
+          total: order.total,
+          seller: order.buyer,
+          status: STATUS_TO_TAB[order.status] ?? "pending",
+          date: order.pickupDate,
+          pickupCode: order.pickupCode,
+          pickupTime: order.pickupTime,
+        })),
+      )
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to load orders."
+
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchOrders()
+  }, [fetchOrders])
 
   const tabs: { key: OrderTab; label: string; count: number }[] = [
-    { key: "pending", label: "Pending", count: allOrders.filter(o => o.status === "pending").length },
-    { key: "ready", label: "Ready", count: allOrders.filter(o => o.status === "ready").length },
-    { key: "claimed", label: "Claimed", count: allOrders.filter(o => o.status === "claimed").length },
-    { key: "cancelled", label: "Cancelled", count: allOrders.filter(o => o.status === "cancelled").length },
+    { key: "pending", label: "Pending", count: orders.filter(o => o.status === "pending").length },
+    { key: "ready", label: "Ready", count: orders.filter(o => o.status === "ready").length },
+    { key: "claimed", label: "Claimed", count: orders.filter(o => o.status === "claimed").length },
+    { key: "cancelled", label: "Cancelled", count: orders.filter(o => o.status === "cancelled").length },
   ]
 
-  const filtered = allOrders.filter(o => o.status === activeTab)
-  const totalSaved = allOrders.filter(o => o.status === "claimed").reduce((s, o) => s + o.savings, 0)
+  const filtered = orders.filter(o => o.status === activeTab)
+  const totalSaved = 0
 
   const statusStyle: Record<OrderTab, { label: string; dotColor: string; pill: string; text: string }> = {
     pending:   { label: "Pending",      dotColor: "bg-amber-400",   pill: "bg-amber-50 border border-amber-200",    text: "text-amber-700" },
@@ -369,9 +355,9 @@ export function BuyerOrdersScreen() {
       <div className="px-5 -mt-4 mb-3 shrink-0">
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Total Orders", value: allOrders.length },
+            { label: "Total Orders", value: orders.length },
             { label: "Total Saved", value: `₱${totalSaved}` },
-            { label: "Waste Saved", value: "~4.2 kg" },
+            { label: "Waste Saved", value: "~0 kg" },
           ].map(({ label, value }) => (
             <div key={label} className="glass-card-strong rounded-2xl p-3 text-center shadow-md">
               <p className="text-base font-black text-foreground">{value}</p>
@@ -381,121 +367,146 @@ export function BuyerOrdersScreen() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="px-5 mb-3 shrink-0">
-        <div className="glass-card rounded-2xl p-1 flex gap-1">
-          {tabs.map(({ key, label, count }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex-1 flex flex-col items-center py-2 rounded-xl text-[10px] font-bold transition-all ${
-                activeTab === key
-                  ? "sky-gradient text-white shadow-md"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span>{label}</span>
-              {count > 0 && (
-                <span className={`text-[9px] font-black ${activeTab === key ? "text-white/80" : "text-muted-foreground"}`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Loading state */}
+      {loading && (
+        <LoadingView label="Loading orders..." className="flex-1" />
+      )}
 
-      {/* Orders list */}
-      <div className="flex-1 overflow-y-auto px-5 pb-24" style={{ scrollbarWidth: "none" }}>
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="w-16 h-16 glass-card rounded-full flex items-center justify-center">
-              <Package className="w-8 h-8 text-muted-foreground/50" />
-            </div>
-            <p className="text-muted-foreground text-sm font-medium">No {activeTab} orders</p>
-            {activeTab === "pending" && (
-              <GlassButton variant="primary" size="md" onClick={() => navigate("buyer-home")}>
-                Browse Deals
-              </GlassButton>
-            )}
+      {/* Error state */}
+      {!loading && error && (
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
+          <div role="alert" className="text-sm text-danger font-semibold text-center">
+            {error}
           </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filtered.map((order) => {
-              const st = statusStyle[order.status]
-              return (
+          <GlassButton variant="primary" size="md" onClick={() => void fetchOrders()}>
+            Try Again
+          </GlassButton>
+        </div>
+      )}
+
+      {/* Empty state (no orders at all) */}
+      {!loading && !error && orders.length === 0 && (
+        <EmptyStateWidget
+          icon={Package}
+          title="No orders yet"
+          description="Your order history will appear here after you reserve food."
+          action={
+            <GlassButton variant="primary" size="md" onClick={() => navigate("buyer-home")}>
+              Browse Deals
+            </GlassButton>
+          }
+        />
+      )}
+
+      {/* Orders content */}
+      {!loading && !error && orders.length > 0 && (
+        <>
+          {/* Tabs */}
+          <div className="px-5 mb-3 shrink-0">
+            <div className="glass-card rounded-2xl p-1 flex gap-1">
+              {tabs.map(({ key, label, count }) => (
                 <button
-                  key={order.id}
-                  onClick={() => order.status === "ready" ? navigate("buyer-pickup-qr") : undefined}
-                  className="glass-card rounded-2xl shadow-md text-left hover:shadow-lg active:scale-[0.99] transition-all overflow-hidden w-full"
-                  aria-label={`Order ${order.id}, ${order.status}`}
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`flex-1 flex flex-col items-center py-2 rounded-xl text-[10px] font-bold transition-all ${
+                    activeTab === key
+                      ? "sky-gradient text-white shadow-md"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  {/* Top row */}
-                  <div className="flex gap-3 p-4 pb-3">
-                    {/* Product thumbnail */}
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={order.image} alt={order.item} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-muted-foreground">{order.id}</span>
-                        <span className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${st.pill} ${st.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${st.dotColor}`} aria-hidden="true" />
-                          {st.label}
-                        </span>
-                      </div>
-                      <p className="text-sm font-bold text-foreground line-clamp-1 mb-0.5">
-                        {order.item}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground line-clamp-1">
-                        {order.seller} · {order.branch}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0 pt-0.5">{order.date}</span>
-                  </div>
-
-                  {/* Price row */}
-                  <div className="px-4 pb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-primary font-black text-sm">₱{order.total}</span>
-                      <span className="text-[10px] text-muted-foreground">Qty: {order.qty}</span>
-                    </div>
-                    <span className="badge-savings text-[9px] px-2 py-0.5 rounded-full">
-                      Saved ₱{order.savings}
+                  <span>{label}</span>
+                  {count > 0 && (
+                    <span className={`text-[9px] font-black ${activeTab === key ? "text-white/80" : "text-muted-foreground"}`}>
+                      {count}
                     </span>
-                  </div>
-
-                  {/* CTA strip for ready orders */}
-                  {order.status === "ready" && (
-                    <div className="sky-gradient px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-white/80 text-[9px] font-medium">Ready for Pickup</p>
-                        <p className="text-white font-black text-sm tracking-wider">{order.pickupCode}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5 glass rounded-full px-3 py-1.5">
-                        <QrCode className="w-3.5 h-3.5 text-white" />
-                        <span className="text-white text-[10px] font-bold">Show QR</span>
-                        <ChevronRight className="w-3 h-3 text-white/70" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pickup time for pending */}
-                  {order.status === "pending" && (
-                    <div className="px-4 pb-3 flex items-center gap-1.5">
-                      <Clock className="w-3 h-3 text-muted-foreground" />
-                      <p className="text-[10px] text-muted-foreground">
-                        Pickup scheduled: {order.date} at {order.pickupTime}
-                      </p>
-                    </div>
                   )}
                 </button>
-              )
-            })}
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Orders list */}
+          <div className="flex-1 overflow-y-auto px-5 pb-24" style={{ scrollbarWidth: "none" }}>
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-16 h-16 glass-card rounded-full flex items-center justify-center">
+                  <Package className="w-8 h-8 text-muted-foreground/50" />
+                </div>
+                <p className="text-muted-foreground text-sm font-medium">No {activeTab} orders</p>
+                {activeTab === "pending" && (
+                  <GlassButton variant="primary" size="md" onClick={() => navigate("buyer-home")}>
+                    Browse Deals
+                  </GlassButton>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {filtered.map((order) => {
+                  const st = statusStyle[order.status]
+                  return (
+                    <button
+                      key={order.id}
+                      onClick={() => order.status === "ready" ? navigate("buyer-pickup-qr") : undefined}
+                      className="glass-card rounded-2xl shadow-md text-left hover:shadow-lg active:scale-[0.99] transition-all overflow-hidden w-full"
+                      aria-label={`Order ${order.id}, ${order.status}`}
+                    >
+                      {/* Top row */}
+                      <div className="flex gap-3 p-4 pb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-bold text-muted-foreground">{order.id}</span>
+                            <span className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${st.pill} ${st.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${st.dotColor}`} aria-hidden="true" />
+                              {st.label}
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-foreground line-clamp-1 mb-0.5">
+                            {order.item}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0 pt-0.5">{order.date}</span>
+                      </div>
+
+                      {/* Price row */}
+                      <div className="px-4 pb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-primary font-black text-sm">₱{order.total}</span>
+                          <span className="text-[10px] text-muted-foreground">Qty: {order.qty}</span>
+                        </div>
+                      </div>
+
+                      {/* CTA strip for ready orders */}
+                      {order.status === "ready" && (
+                        <div className="sky-gradient px-4 py-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-white/80 text-[9px] font-medium">Ready for Pickup</p>
+                            <p className="text-white font-black text-sm tracking-wider">{order.pickupCode}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 glass rounded-full px-3 py-1.5">
+                            <QrCode className="w-3.5 h-3.5 text-white" />
+                            <span className="text-white text-[10px] font-bold">Show QR</span>
+                            <ChevronRight className="w-3 h-3 text-white/70" />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pickup time for pending */}
+                      {order.status === "pending" && (
+                        <div className="px-4 pb-3 flex items-center gap-1.5">
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          <p className="text-[10px] text-muted-foreground">
+                            Pickup scheduled: {order.date} at {order.pickupTime}
+                          </p>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <BottomNav />
     </div>

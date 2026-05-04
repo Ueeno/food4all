@@ -113,6 +113,68 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Updated `.gitignore` for SQLite test WAL/SHM files and expanded Vitest coverage to include `app/**/*.test.ts`.
 - Confirmed no frontend service migration, seller mutations, cart/order/pickup/report APIs, image upload, deployment config, or UI redesign was added.
 - Verification passed after Task 016: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (10 files, 83 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 017 completed for connecting frontend auth/category/product services to the SQL-backed API routes.
+- Added `lib/api-client.ts` with typed JSON envelope handling, `credentials: "include"`, safe error parsing, and typed `ApiClientError` failures for service callers.
+- Migrated `lib/services/auth-service.ts` to call `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me`; no Firebase, Firestore, or auth-library replacement was added.
+- Migrated `lib/services/category-service.ts` to call `GET /api/categories`.
+- Migrated `lib/services/product-service.ts` to call `GET /api/products` and `GET /api/products/[id]`, with derived read helpers using product list query parameters instead of importing product mock data.
+- Kept cart, checkout, orders, pickup, seller product create/edit/delete, seller reports, and seller profile mutations on their existing mock/local services.
+- Added fetch-mocked tests for API client success/error handling, auth service API calls, category service API calls, product service API calls, and adjusted existing service/rendered marketplace tests to keep screens working through the service boundary.
+- Verification passed after Task 017: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 93 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 018 completed for SQL-backed seller product mutation APIs.
+- Added seller-only auth/profile enforcement for product mutations through `lib/api/seller-auth.ts`; unauthenticated users receive `401`, non-seller users receive `403`, and seller users must have a seller profile.
+- Added product mutation helpers and validation schemas for seller product create/update requests, including required product/category fields, positive pricing, discount bounds, non-negative integer quantity, valid expiry dates, optional `imageUrl`, and category existence checks.
+- Implemented `POST /api/seller/products`, `PATCH /api/seller/products/[id]`, and `DELETE /api/seller/products/[id]` with Prisma. Delete is a soft remove using `status = removed`.
+- Enforced owner-only seller product mutation: sellers can update/delete their own products only; another seller's product returns `403`.
+- Extended the isolated SQLite test seed with a second seller and ownership fixture, and expanded `app/api/backend-routes.test.ts` to cover unauthenticated create, buyer create, invalid seller create, valid seller create, owner update, cross-seller update blocking, owner delete, missing delete, and public product list/detail behavior after mutations.
+- Confirmed no Firebase, Firestore, cart/order/pickup/report APIs, image upload, UI redesign, buyer cart/checkout migration, or seller UI/service migration was added for Task 018.
+- Verification passed after Task 018: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 101 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 019 completed for connecting seller product management UI/services to the SQL-backed seller product mutation APIs.
+- Migrated `lib/services/seller-service.ts` product mutations so `createProduct` calls `POST /api/seller/products`, `updateProduct` calls `PATCH /api/seller/products/[id]`, and `deleteProduct` calls `DELETE /api/seller/products/[id]` through the typed API client.
+- Kept `getSellerProducts` mock/local because there is not yet a seller-specific listing endpoint; seller dashboard/product-list reads continue through the service boundary.
+- Connected valid seller add-product submission to `sellerService.createProduct`, preserving local validation and adding submitting, success, and API/validation error states.
+- Connected the existing seller product delete action to `sellerService.deleteProduct`, including loading, success/error state, and local list refresh; no large edit UI was added, so the existing edit button now reports that editing is unavailable.
+- Added fetch/service-mocked coverage for seller service create/update/delete calls, valid add-product API submit, API failure display, and delete action wiring.
+- Confirmed no Firebase, Firestore, cart/order/pickup/report APIs, image upload, UI redesign, buyer cart/checkout migration, direct screen-level mock-data imports, or broad seller listing/edit migration was added for Task 019.
+- Verification passed after Task 019: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 106 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 020 completed for SQL-backed seller product listing and seller product list refresh.
+- Added `GET /api/seller/products` to the existing seller products route with authenticated seller/profile enforcement, owner-only filtering, `status != removed`, existing product DTO mapping, and stable newest-first/name ordering.
+- Extended isolated route-handler integration tests for unauthenticated seller listing `401`, buyer listing `403`, seller-owned listing results, removed-product exclusion, and second-seller isolation.
+- Migrated `getSellerProducts` in `lib/services/seller-service.ts` to call `GET /api/seller/products`; create/update/delete remain API-backed, while seller dashboard metrics/reports/profile remain mock/local.
+- Updated seller product rendered tests and the shared fetch mock so the product list renders backend-provided seller data and delete flows reload the seller list after mutation.
+- Confirmed no Firebase, Firestore, cart/order/pickup/report APIs, image upload, buyer cart/checkout migration, full seller edit UI, UI redesign, or direct screen-level mock-data imports were added for Task 020.
+- Verification passed after Task 020: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 112 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 021 completed for a focused seller product edit UI using the existing update API.
+- Replaced the seller product list's edit-unavailable placeholder with a compact inline edit panel opened from the existing edit button.
+- The edit panel pre-fills product name, brand, category, original/discounted prices, quantity, expiry date, weight, pickup address, store hours, and description from the selected backend-backed seller product.
+- Reused the seller product validation rules for required name/category/price/expiry fields, positive pricing, discount bounds, valid expiry date, and non-negative whole-number quantity.
+- Connected edit submit to `sellerService.updateProduct`, which calls `PATCH /api/seller/products/[id]`; successful edits refresh the backend-backed seller product list and close the edit panel.
+- Added loading, validation error, API error, success, and cancel states for the edit panel while keeping backend ownership enforcement in the API.
+- Added rendered tests for opening/prefilling the edit form, cancel, invalid edit validation, valid PATCH/update refresh behavior, and visible API edit failures.
+- Confirmed no Firebase, Firestore, cart/order/pickup/report APIs, image upload, buyer cart/checkout migration, broad UI redesign, or direct screen-level mock-data imports were added for Task 021.
+- Verification passed after Task 021: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 116 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 022 completed for SQL-backed buyer cart APIs and frontend cart service migration.
+- Added buyer-only cart route handlers for `GET /api/cart`, `POST /api/cart/items`, `PATCH /api/cart/items/[productId]`, `DELETE /api/cart/items/[productId]`, and `DELETE /api/cart`.
+- Cart APIs require an authenticated buyer; unauthenticated users receive `401` and seller users receive `403`.
+- Added cart validation for product ids, positive add quantities, and non-negative update quantities; product adds require an existing non-removed active product and reject quantities above stock.
+- Added cart DTO mapping that returns item product details, line totals, item count, subtotal, and total computed from current product prices.
+- Extended isolated route-handler integration tests for cart access control, empty carts, add/increment/update/remove/clear behavior, invalid quantities, missing/removed products, and total calculation.
+- Migrated `lib/services/cart-service.ts` to call the new cart API routes through the typed API client while preserving stable cart service function names.
+- Updated app-state cart behavior so buyer cart actions go through the cart service and backend-shaped responses; localStorage cart behavior remains only as a guest/API-unavailable fallback for the current local auth shell.
+- Updated rendered marketplace/service tests and the shared fetch mock to cover backend cart calls, rendered backend cart data, increment/decrement/remove behavior, total updates, and fallback local storage behavior.
+- Confirmed no Firebase, Firestore, order checkout API, pickup/report APIs, payment features, image upload, buyer checkout persistence, or broad UI redesign was added for Task 022.
+- Verification passed after Task 022: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 129 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-04: Task 023 completed for SQL-backed buyer order creation and order listing APIs.
+- Added `POST /api/orders` route handler that atomically creates orders from the buyer's server-side cart: validates stock, snapshots product prices into `OrderItem` rows, decrements product stock, generates a SHA-256-hashed pickup code with plaintext returned on creation, and clears the buyer's cart.
+- Added `GET /api/orders` route handler that returns the authenticated buyer's order history with order items and masked pickup codes.
+- Added `lib/api/order.ts` with order auth guard, pickup code generation/hashing, Prisma includes, and order/item DTO mappers.
+- Added `createOrderSchema` to `lib/api/validation.ts` for pickup date/time validation.
+- Migrated `lib/services/order-service.ts`: `createOrder` and `getBuyerOrders` now call the SQL-backed order APIs through the typed API client; seller order and pickup verification operations remain mock/local.
+- Updated `buyer-cart-screen.tsx` checkout to call `createOrder` from the order service, display API errors, and navigate to pickup QR on success.
+- Extended backend route-handler integration tests with 10 new order tests covering auth/access control, empty cart conflict, order creation with snapshotted prices, cart clearing, stock decrement, buyer order listing, and server-side total computation.
+- Extended the shared fetch mock and rendered marketplace tests to cover async order API checkout, checkout error display, and cart clearing through the order mock.
+- Confirmed no Firebase, Firestore, pickup verification API, seller reports API, payment processing, or broad UI redesign was added for Task 023.
+- Verification passed after Task 023: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 140 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
 
 ## Finished
 - Task 001: React/Next marketplace is buildable and type-checkable.
@@ -131,6 +193,13 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Task 014: Backend/API/database architecture and typed API contracts are documented and verified without implementing backend code.
 - Task 015: Backend foundation exists with Prisma schema/client setup, local SQLite seed data, response/validation/session helpers, and initial health/auth/category/product-read route handlers.
 - Task 016: Initial backend route handlers are covered by isolated SQLite integration tests that do not mutate `prisma/dev.db`.
+- Task 017: Auth, category, and product frontend services now call the SQL-backed API routes through a typed JSON API client.
+- Task 018: Seller product create/update/delete route handlers exist with authenticated seller-only and owner-only Prisma-backed behavior.
+- Task 019: Seller product create/update/delete service functions and current add/delete UI actions now call the SQL-backed seller product APIs through the service boundary.
+- Task 020: Seller product listing route and `getSellerProducts` service read path now use SQL-backed seller-owned data, excluding soft-removed products.
+- Task 021: Seller product edit button opens a focused prefilled edit panel that validates and updates products through the existing SQL-backed seller update API.
+- Task 022: Buyer cart route handlers and cart service/app-state behavior now use SQL-backed cart APIs for authenticated buyer cart reads and item mutations, with guest/API-unavailable local fallback documented.
+- Task 023: SQL-backed order creation and buyer order listing APIs exist and are connected to the checkout UI through the order service boundary.
 - `build` passes with TypeScript errors no longer hidden.
 - `lint` passes with no warnings or errors.
 - `typecheck` passes.
@@ -156,15 +225,15 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Key buyer browsing/detail screens and seller screens now read mock data through service contracts instead of direct mock-data imports.
 
 ## Unfinished
-- Backend implementation remains incomplete beyond the Task 015 foundation.
+- Backend implementation remains incomplete beyond auth/category/product reads, seller product management, buyer cart APIs, and buyer order creation/listing.
 - Production database implementation and migration history remain unfinished; Task 015 used local SQLite `db push` only.
-- Real backend-backed authentication remains unfinished.
-- Real API integration behind the mock service contracts remains unfinished.
-- Real backend API implementation remains unfinished for seller mutations, cart, checkout/orders, pickup verification, dashboard, reports, and seller profile routes.
+- Backend-backed role selection remains unfinished; `PATCH /api/auth/role` is still not implemented.
+- Real API integration remains unfinished for pickup, seller orders, seller dashboard, seller reports, and seller profile workflows.
+- Real backend API implementation remains unfinished for pickup verification, seller order management, dashboard, reports, and seller profile routes.
 - Database migrations remain unfinished.
-- Backend-backed persistent product, cart, order, buyer, and seller data remain unfinished.
-- Product management, checkout, and order workflows remain mock-only.
-- Broader route-handler integration tests remain unfinished for future seller, cart, order, pickup, report, profile, and role-selection endpoints.
+- Backend-backed buyer profile, seller dashboard/report/profile workflow data remain unfinished.
+- Buyer order history screen still renders hardcoded mock orders; it needs migration to use `getBuyerOrders` from the order service.
+- Broader route-handler integration tests remain unfinished for future pickup, seller order, report, profile, and role-selection endpoints.
 - Broad marketplace integration and e2e test coverage remains unfinished.
 - Rendered component coverage outside auth and logout remains unfinished.
 - Buyer order-history empty-state coverage remains unfinished because the current screen hardcodes at least one mock order in every tab and does not expose a testable empty-data boundary.
@@ -172,27 +241,31 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 
 ## Partially Finished
 - React/Next marketplace UI exists and compiles.
-- Buyer and seller screens exist, but many flows are still mock-only or local-state-only.
-- State management exists through React context, including local auth state and temporary `localStorage` persistence for auth/session/cart, but it is not backend-backed and is not connected to real services.
+- Buyer and seller screens exist, but buyer order history display, pickup, report, dashboard, and profile flows are still mock-only or local-state-only.
+- State management exists through React context, including local auth state and temporary fallback `localStorage` persistence; auth and cart service calls are backend-backed, but app-state role selection remains local until the role endpoint is implemented.
 - Backend architecture is planned, typed, and partially implemented at the foundation level with Prisma, helpers, seed data, initial read/auth routes, and isolated route-handler tests.
+- Backend seller product listing and mutation APIs are implemented and tested, and the seller frontend list/add/edit/delete UI plus create/update/delete/list service functions now call them.
 - Reusable UI baseline is complete, but not every screen has been fully migrated away from inline layout-specific UI.
 - `LoadingView` exists and compiles, but broader loading-state adoption remains partial because most current flows use local mock timers or no async state.
-- Auth remains frontend-only for the current UI shell; server auth endpoints now exist, but the UI has not migrated to them yet.
-- Service layer is a mock frontend boundary only; it returns Promises but does not call a network API.
-- Service, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, pure navigation boundaries, app-state transitions, key rendered auth/logout behavior, buyer/seller mock marketplace flows, local buyer cart quantity behavior, remaining mock profile/report/order screens, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and initial backend route behavior.
+- Auth app-state role selection remains local for the current UI shell; the auth service itself now calls the server auth endpoints.
+- The service layer is mixed: auth/category/product read services, seller product listing/create/update/delete, buyer cart reads/mutations, and buyer order creation/listing are API-backed, while seller orders/pickup/report/profile workflows remain mock/local.
+- Service, API client, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, typed API envelope handling, service API calls, pure navigation boundaries, app-state transitions, key rendered auth/logout behavior, buyer/seller mock marketplace flows, backend-backed buyer cart and order checkout behavior, remaining mock profile/report/order screens, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and backend route behavior including order creation and listing.
 
 ## Broken or Risky
-- No Task 001, Task 002, Task 003, Task 004, Task 005, Task 006, Task 007, Task 008, Task 009, Task 010, Task 011, Task 012, Task 013, Task 014, Task 015, or Task 016 build/typecheck/lint/test blocker remains after verification.
-- The app UI still depends on mock service data and has not migrated to the new API routes.
-- Server auth/session route handlers now exist and have initial integration tests, but they still need rate limiting, hardening, broader auth/role coverage, and frontend migration.
+- No Task 001–023 build/typecheck/lint/test blocker remains after verification.
+- Seller orders, pickup verification, seller dashboard/report/profile workflows still depend on mock/local services.
+- Cart localStorage is now fallback-only for guest/API-unavailable behavior while the app-state auth shell remains local; authenticated server-cookie cart behavior is handled by the cart APIs and service.
+- Seller product management UI is now wired for list/add/edit/delete through SQL-backed APIs; image upload and archive/restore remain out of scope.
+- Server auth/session route handlers now exist and have initial integration tests, but they still need rate limiting, hardening, broader auth/role coverage, and app-state role-selection migration.
 - The local SQLite runtime depends on `better-sqlite3`; `package.json` allows that package's build script through pnpm so the native binding can be installed locally.
 - Test database schema setup uses `RUST_LOG=debug` and `RUST_BACKTRACE=1` inside the helper because Prisma 7's Windows SQLite schema engine otherwise produced a blank schema-engine error in this environment.
 - UI still has some legacy inline screen-specific patterns, so future feature work should continue migrating only where it reduces repetition or risk.
-- Mock service modules intentionally reset on refresh and are not persistence layers; only auth/session/cart use temporary frontend-only storage.
+- Mock service modules intentionally reset on refresh and are not persistence layers; only auth/session and fallback cart state use temporary frontend-only storage.
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 016: Completed and verified.
+- Task 023: Completed and verified.
 
 ## Next Recommended Work
-- Task 017: Implement the authenticated role-selection route from the contract (`PATCH /api/auth/role`) with isolated route-handler tests, still without migrating frontend services.
+- Task 024: Migrate buyer order history screen to use `getBuyerOrders` from the SQL-backed order service, replacing the hardcoded mock order list.
+- Future: Seller order listing/management API, pickup verification API, seller dashboard/reports API, seller profile API — each as separate scoped tasks.

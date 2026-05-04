@@ -3,12 +3,13 @@
 import Image from "next/image"
 import { useEffect, useId, useState } from "react"
 import { useAppState } from "@/lib/app-state"
+import { isApiClientError } from "@/lib/api-client"
 import { BottomNav } from "@/components/bottom-nav"
 import { GlassButton } from "@/components/glass-button"
 import { LoadingView } from "@/components/food4all"
 import { getSellerOrders, verifyPickupCode } from "@/lib/services/order-service"
-import { getSellerProducts } from "@/lib/services/seller-service"
-import type { Order, Product } from "@/lib/types"
+import { createProduct, deleteProduct, getSellerProducts, updateProduct } from "@/lib/services/seller-service"
+import type { Order, Product, ProductInput } from "@/lib/types"
 import {
   ChevronLeft,
   Upload,
@@ -53,6 +54,8 @@ type SellerProductForm = {
 }
 
 type SellerProductFormErrors = Partial<Record<keyof SellerProductForm, string>>
+
+type SellerProductApiField = keyof SellerProductForm | "categoryId"
 
 function validateSellerProductForm(form: SellerProductForm) {
   const errors: SellerProductFormErrors = {}
@@ -105,6 +108,67 @@ function validateSellerProductForm(form: SellerProductForm) {
     isValid: Object.keys(errors).length === 0,
     errors,
   }
+}
+
+function dateInputValue(value: string) {
+  if (!value) return ""
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) return value
+
+  return parsed.toISOString().slice(0, 10)
+}
+
+function productFormFromProduct(product: Product): SellerProductForm {
+  return {
+    name: product.name,
+    brand: product.brand,
+    category: product.category.toLowerCase(),
+    originalPrice: String(product.originalPrice),
+    discountedPrice: String(product.discountedPrice),
+    quantity: String(product.quantity),
+    weight: product.weight,
+    expiryDate: dateInputValue(product.expiryDate),
+    pickupAddress: product.location,
+    pickupHours: product.pickupHours,
+    description: product.description,
+  }
+}
+
+function formToProductInput(form: SellerProductForm, product: Product): ProductInput {
+  return {
+    name: form.name.trim(),
+    brand: form.brand.trim(),
+    category: form.category.trim(),
+    originalPrice: Number(form.originalPrice),
+    discountedPrice: Number(form.discountedPrice),
+    image: product.image,
+    quantity: form.quantity.trim() ? Number(form.quantity) : 0,
+    unit: product.unit,
+    expiryDate: form.expiryDate,
+    seller: product.seller,
+    location: form.pickupAddress.trim(),
+    barangay: product.barangay,
+    pickupHours: form.pickupHours.trim(),
+    description: form.description.trim() || product.description,
+    weight: form.weight.trim() || product.weight,
+    packSize: form.weight.trim() || product.packSize,
+  }
+}
+
+function mapApiFieldErrorsToForm(fieldErrors: Record<string, string>, form: SellerProductForm) {
+  const nextErrors: SellerProductFormErrors = {}
+
+  for (const [field, message] of Object.entries(fieldErrors) as Array<[SellerProductApiField, string]>) {
+    const normalizedField = field === "categoryId" ? "category" : field
+
+    if (normalizedField in form) {
+      nextErrors[normalizedField] = message
+    }
+  }
+
+  return nextErrors
 }
 
 function SellerFormField({
@@ -160,6 +224,8 @@ export function SellerAddProductScreen() {
   const [loading, setLoading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [errors, setErrors] = useState<SellerProductFormErrors>({})
+  const [submitMessage, setSubmitMessage] = useState("")
+  const [submitError, setSubmitError] = useState("")
   const [form, setForm] = useState<SellerProductForm>({
     name: "",
     brand: "",
@@ -177,20 +243,63 @@ export function SellerAddProductScreen() {
   const update = (k: keyof typeof form, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
     setErrors((current) => ({ ...current, [k]: undefined }))
+    setSubmitError("")
+    setSubmitMessage("")
   }
 
-  const handleSubmit = () => {
+  const productInputFromForm = (): ProductInput => {
+    const originalPrice = Number(form.originalPrice)
+    const discountedPrice = Number(form.discountedPrice)
+    const quantity = form.quantity.trim() ? Number(form.quantity) : 0
+
+    return {
+      name: form.name.trim(),
+      brand: form.brand.trim(),
+      category: form.category.trim(),
+      originalPrice,
+      discountedPrice,
+      image: preview ?? "/placeholder.svg",
+      quantity,
+      unit: "packs",
+      expiryDate: form.expiryDate,
+      seller: "Magsaysay Meat Depot",
+      location: form.pickupAddress.trim(),
+      barangay: "",
+      pickupHours: form.pickupHours.trim(),
+      description: form.description.trim() || "Near-expiry seller listing.",
+      weight: form.weight.trim() || "1 pack",
+      packSize: form.weight.trim() || "1 pack",
+    }
+  }
+
+  const handleSubmit = async () => {
     const result = validateSellerProductForm(form)
 
     setErrors(result.errors)
+    setSubmitError("")
+    setSubmitMessage("")
 
     if (!result.isValid) return
 
     setLoading(true)
-    setTimeout(() => {
+
+    try {
+      await createProduct(productInputFromForm())
+      setSubmitMessage("Product listing published.")
+      setTimeout(() => navigate("seller-products"), 500)
+    } catch (error) {
+      if (isApiClientError(error)) {
+        setErrors((current) => ({
+          ...current,
+          ...mapApiFieldErrorsToForm(error.fieldErrors ?? {}, form),
+        }))
+        setSubmitError(error.message)
+      } else {
+        setSubmitError("Product listing could not be published.")
+      }
+    } finally {
       setLoading(false)
-      navigate("seller-products")
-    }, 1400)
+    }
   }
 
   const categories = ["Hotdogs", "Sausages", "Tocino", "Bacon", "Ham", "Frozen Foods", "Bundle Deals"]
@@ -243,6 +352,16 @@ export function SellerAddProductScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 pb-32 space-y-4" style={{ scrollbarWidth: "none" }}>
+        {(submitError || submitMessage) && (
+          <div
+            className={`rounded-2xl px-4 py-3 text-xs font-semibold ${
+              submitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"
+            }`}
+            role={submitError ? "alert" : "status"}
+          >
+            {submitError || submitMessage}
+          </div>
+        )}
 
         {/* Image upload */}
         <section className="glass-card-strong rounded-3xl p-5 shadow-xl">
@@ -292,6 +411,7 @@ export function SellerAddProductScreen() {
             placeholder="e.g. Purefoods"
             value={form.brand}
             onChange={(value) => update("brand", value)}
+            error={errors.brand}
           />
 
           <div>
@@ -475,6 +595,13 @@ export function SellerProductsScreen() {
   const { navigate } = useAppState()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [editForm, setEditForm] = useState<SellerProductForm | null>(null)
+  const [editErrors, setEditErrors] = useState<SellerProductFormErrors>({})
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [actionMessage, setActionMessage] = useState("")
+  const [actionError, setActionError] = useState("")
 
   useEffect(() => {
     let ignore = false
@@ -494,6 +621,94 @@ export function SellerProductsScreen() {
       ignore = true
     }
   }, [])
+
+  const refreshProducts = async () => {
+    const nextProducts = await getSellerProducts()
+    setProducts(nextProducts)
+
+    return nextProducts
+  }
+
+  const handleDelete = async (product: Product) => {
+    setDeletingProductId(product.id)
+    setActionError("")
+    setActionMessage("")
+
+    try {
+      await deleteProduct(product.id)
+      await refreshProducts()
+      setActionMessage(`${product.name} was deleted.`)
+    } catch (error) {
+      setActionError(
+        isApiClientError(error) ? error.message : `${product.name} could not be deleted.`,
+      )
+    } finally {
+      setDeletingProductId(null)
+    }
+  }
+
+  const beginEdit = (product: Product) => {
+    setEditingProduct(product)
+    setEditForm(productFormFromProduct(product))
+    setEditErrors({})
+    setActionError("")
+    setActionMessage("")
+  }
+
+  const cancelEdit = () => {
+    setEditingProduct(null)
+    setEditForm(null)
+    setEditErrors({})
+    setActionError("")
+  }
+
+  const updateEditField = (field: keyof SellerProductForm, value: string) => {
+    setEditForm((current) => (current ? { ...current, [field]: value } : current))
+    setEditErrors((current) => ({ ...current, [field]: undefined }))
+    setActionError("")
+    setActionMessage("")
+  }
+
+  const submitEdit = async () => {
+    if (!editingProduct || !editForm) return
+
+    const result = validateSellerProductForm(editForm)
+
+    setEditErrors(result.errors)
+    setActionError("")
+    setActionMessage("")
+
+    if (!result.isValid) return
+
+    setSavingEdit(true)
+
+    try {
+      const updatedProduct = await updateProduct(
+        editingProduct.id,
+        formToProductInput(editForm, editingProduct),
+      )
+      const nextProducts = await refreshProducts()
+      const refreshedProduct =
+        nextProducts.find((product) => product.id === editingProduct.id) ?? updatedProduct
+
+      setEditingProduct(null)
+      setEditForm(null)
+      setEditErrors({})
+      setActionMessage(`${refreshedProduct?.name ?? editingProduct.name} was updated.`)
+    } catch (error) {
+      if (isApiClientError(error)) {
+        setEditErrors((current) => ({
+          ...current,
+          ...mapApiFieldErrorsToForm(error.fieldErrors ?? {}, editForm),
+        }))
+        setActionError(error.message)
+      } else {
+        setActionError(`${editingProduct.name} could not be updated.`)
+      }
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -523,6 +738,161 @@ export function SellerProductsScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 pb-24" style={{ scrollbarWidth: "none" }}>
+        {(actionError || actionMessage) && (
+          <div
+            className={`mb-3 rounded-2xl px-4 py-3 text-xs font-semibold ${
+              actionError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"
+            }`}
+            role={actionError ? "alert" : "status"}
+          >
+            {actionError || actionMessage}
+          </div>
+        )}
+        {editingProduct && editForm && (
+          <section className="mb-4 glass-card-strong rounded-3xl p-5 shadow-xl space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-foreground text-sm">Edit Product</h2>
+                <p className="text-[10px] text-muted-foreground line-clamp-1">{editingProduct.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="glass-card rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <SellerFormField
+              label="Product Name"
+              placeholder="e.g. Purefoods Tender Juicy Hotdog"
+              value={editForm.name}
+              onChange={(value) => updateEditField("name", value)}
+              error={editErrors.name}
+            />
+            <SellerFormField
+              label="Brand"
+              placeholder="e.g. Purefoods"
+              value={editForm.brand}
+              onChange={(value) => updateEditField("brand", value)}
+              error={editErrors.brand}
+            />
+
+            <div>
+              <label className="text-xs font-semibold text-foreground/80 mb-1.5 block">Category</label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Edit category">
+                {["Hotdogs", "Sausages", "Tocino", "Bacon", "Ham", "Frozen Foods", "Bundle Deals"].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => updateEditField("category", cat.toLowerCase())}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all ${
+                      editForm.category === cat.toLowerCase()
+                        ? "sky-gradient text-white shadow-md"
+                        : "bg-muted text-foreground/70 hover:bg-muted/80"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              {editErrors.category && (
+                <p className="mt-1.5 text-xs font-semibold text-red-500">{editErrors.category}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <SellerFormField
+                label="Original Price (PHP)"
+                placeholder="285"
+                type="number"
+                value={editForm.originalPrice}
+                onChange={(value) => updateEditField("originalPrice", value)}
+                error={editErrors.originalPrice}
+              />
+              <SellerFormField
+                label="Discounted Price (PHP)"
+                placeholder="185"
+                type="number"
+                value={editForm.discountedPrice}
+                onChange={(value) => updateEditField("discountedPrice", value)}
+                error={editErrors.discountedPrice}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <SellerFormField
+                label="Available Quantity"
+                placeholder="48"
+                type="number"
+                value={editForm.quantity}
+                onChange={(value) => updateEditField("quantity", value)}
+                error={editErrors.quantity}
+              />
+              <SellerFormField
+                label="Expiry Date"
+                placeholder="May 12, 2026"
+                type="date"
+                value={editForm.expiryDate}
+                onChange={(value) => updateEditField("expiryDate", value)}
+                error={editErrors.expiryDate}
+              />
+            </div>
+
+            <SellerFormField
+              label="Weight / Pack Size"
+              placeholder="500g"
+              value={editForm.weight}
+              onChange={(value) => updateEditField("weight", value)}
+            />
+            <SellerFormField
+              label="Pickup Address"
+              placeholder="Magsaysay Market, Davao City"
+              value={editForm.pickupAddress}
+              onChange={(value) => updateEditField("pickupAddress", value)}
+            />
+            <SellerFormField
+              label="Store Hours"
+              placeholder="7:00 AM - 5:00 PM"
+              value={editForm.pickupHours}
+              onChange={(value) => updateEditField("pickupHours", value)}
+            />
+
+            <div>
+              <label className="text-xs font-semibold text-foreground/80 mb-1.5 block">Description</label>
+              <textarea
+                value={editForm.description}
+                onChange={(event) => updateEditField("description", event.target.value)}
+                placeholder="Describe your product"
+                aria-label="Edit description"
+                rows={3}
+                className="glass-input w-full px-4 py-3 rounded-2xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none transition-all resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <GlassButton
+                variant="outline"
+                size="md"
+                fullWidth
+                onClick={cancelEdit}
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                variant="primary"
+                size="md"
+                fullWidth
+                loading={savingEdit}
+                onClick={submitEdit}
+                icon={<Edit3 className="w-4 h-4" />}
+              >
+                Save Changes
+              </GlassButton>
+            </div>
+          </section>
+        )}
         <div className="flex flex-col gap-3">
           {products.map((product) => (
             <div key={product.id} className="glass-card rounded-2xl overflow-hidden flex shadow-md">
@@ -538,13 +908,24 @@ export function SellerProductsScreen() {
                 <div className="flex items-start justify-between gap-1 mb-1">
                   <p className="text-xs font-bold text-foreground line-clamp-1 flex-1">{product.name}</p>
                   <div className="flex gap-1.5 shrink-0">
-                    <button className="w-7 h-7 glass-card rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => beginEdit(product)}
+                      className="w-7 h-7 glass-card rounded-xl flex items-center justify-center hover:bg-primary/10 transition-colors"
                       aria-label={`Edit ${product.name}`}>
                       <Edit3 className="w-3 h-3 text-primary" />
                     </button>
-                    <button className="w-7 h-7 glass-card rounded-xl flex items-center justify-center hover:bg-red-50/60 transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(product)}
+                      disabled={deletingProductId === product.id}
+                      className="w-7 h-7 glass-card rounded-xl flex items-center justify-center hover:bg-red-50/60 transition-colors disabled:opacity-60"
                       aria-label={`Delete ${product.name}`}>
-                      <Trash2 className="w-3 h-3 text-red-400" />
+                      {deletingProductId === product.id ? (
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-red-300 border-t-transparent" />
+                      ) : (
+                        <Trash2 className="w-3 h-3 text-red-400" />
+                      )}
                     </button>
                   </div>
                 </div>

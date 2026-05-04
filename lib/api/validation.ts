@@ -25,6 +25,61 @@ const optionalBoolean = z.preprocess((value) => {
   return value
 }, z.boolean().optional())
 
+const requiredTrimmedString = (message: string) => z.string().trim().min(1, message)
+
+const optionalNonEmptyTrimmedString = (message: string) =>
+  z.string().trim().min(1, message).optional()
+
+const requiredPositiveNumber = (message: string) =>
+  z.preprocess(
+    (value) => (typeof value === "string" ? Number(value) : value),
+    z.number({ required_error: message, invalid_type_error: message }).finite(message).positive(message),
+  )
+
+const optionalPositiveNumber = (message: string) =>
+  z.preprocess(
+    (value) => (value === undefined ? undefined : typeof value === "string" ? Number(value) : value),
+    z.number({ invalid_type_error: message }).finite(message).positive(message).optional(),
+  )
+
+const requiredNonNegativeInteger = (message: string) =>
+  z.preprocess(
+    (value) => (typeof value === "string" ? Number(value) : value),
+    z
+      .number({ required_error: message, invalid_type_error: message })
+      .int(message)
+      .min(0, message),
+  )
+
+const optionalNonNegativeIntegerValue = (message: string) =>
+  z.preprocess(
+    (value) => (value === undefined ? undefined : typeof value === "string" ? Number(value) : value),
+    z.number({ invalid_type_error: message }).int(message).min(0, message).optional(),
+  )
+
+const requiredExpiryDate = z
+  .string()
+  .trim()
+  .min(1, "Expiry date is required.")
+  .refine((value) => !Number.isNaN(new Date(value).getTime()), "Enter a valid expiry date.")
+
+const optionalExpiryDate = z
+  .string()
+  .trim()
+  .min(1, "Enter a valid expiry date.")
+  .refine((value) => !Number.isNaN(new Date(value).getTime()), "Enter a valid expiry date.")
+  .optional()
+
+const optionalDiscountPercent = z.preprocess(
+  (value) => (value === undefined ? undefined : typeof value === "string" ? Number(value) : value),
+  z
+    .number({ invalid_type_error: "Discount must be between 0 and 100%." })
+    .int("Discount must be between 0 and 100%.")
+    .min(0, "Discount must be between 0 and 100%.")
+    .max(100, "Discount must be between 0 and 100%.")
+    .optional(),
+)
+
 export const registerSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required."),
   lastName: z.string().trim().min(1, "Last name is required."),
@@ -52,6 +107,108 @@ export const productListQuerySchema = z.object({
 
 export const idParamSchema = z.object({
   id: z.string().trim().min(1, "Resource id is required."),
+})
+
+export const productIdParamSchema = z.object({
+  productId: z.string().trim().min(1, "Product id is required."),
+})
+
+export const addCartItemSchema = z.object({
+  productId: requiredTrimmedString("Product is required."),
+  quantity: z.preprocess(
+    (value) => (typeof value === "string" ? Number(value) : value),
+    z
+      .number({ required_error: "Quantity is required.", invalid_type_error: "Quantity must be a positive whole number." })
+      .int("Quantity must be a positive whole number.")
+      .positive("Quantity must be a positive whole number."),
+  ),
+})
+
+export const updateCartItemSchema = z.object({
+  quantity: z.preprocess(
+    (value) => (typeof value === "string" ? Number(value) : value),
+    z
+      .number({ required_error: "Quantity is required.", invalid_type_error: "Quantity must be a non-negative whole number." })
+      .int("Quantity must be a non-negative whole number.")
+      .min(0, "Quantity must be a non-negative whole number."),
+  ),
+})
+
+export const sellerProductCreateSchema = z
+  .object({
+    name: requiredTrimmedString("Product name is required."),
+    brand: requiredTrimmedString("Brand is required."),
+    categoryId: requiredTrimmedString("Category is required."),
+    originalPrice: requiredPositiveNumber("Original price must be a positive number."),
+    discountedPrice: requiredPositiveNumber("Discounted price must be a positive number."),
+    discountPercent: optionalDiscountPercent,
+    quantity: requiredNonNegativeInteger("Quantity must be a non-negative whole number."),
+    unit: requiredTrimmedString("Unit is required."),
+    expiryDate: requiredExpiryDate,
+    pickupAddress: requiredTrimmedString("Pickup address is required."),
+    pickupBarangay: optionalTrimmedString,
+    pickupHours: requiredTrimmedString("Pickup hours are required."),
+    description: requiredTrimmedString("Description is required."),
+    weight: requiredTrimmedString("Weight is required."),
+    packSize: requiredTrimmedString("Pack size is required."),
+    imageUrl: optionalTrimmedString,
+    isHot: z.boolean().optional(),
+    isFeatured: z.boolean().optional(),
+  })
+  .superRefine((product, context) => {
+    const discount = (1 - product.discountedPrice / product.originalPrice) * 100
+
+    if (discount < 0 || discount > 100) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountedPrice"],
+        message: "Discount must be between 0 and 100%.",
+      })
+    }
+  })
+
+export const sellerProductUpdateSchema = z
+  .object({
+    name: optionalNonEmptyTrimmedString("Product name is required."),
+    brand: optionalNonEmptyTrimmedString("Brand is required."),
+    categoryId: optionalNonEmptyTrimmedString("Category is required."),
+    originalPrice: optionalPositiveNumber("Original price must be a positive number."),
+    discountedPrice: optionalPositiveNumber("Discounted price must be a positive number."),
+    discountPercent: optionalDiscountPercent,
+    quantity: optionalNonNegativeIntegerValue("Quantity must be a non-negative whole number."),
+    unit: optionalNonEmptyTrimmedString("Unit is required."),
+    expiryDate: optionalExpiryDate,
+    pickupAddress: optionalNonEmptyTrimmedString("Pickup address is required."),
+    pickupBarangay: optionalTrimmedString,
+    pickupHours: optionalNonEmptyTrimmedString("Pickup hours are required."),
+    description: optionalNonEmptyTrimmedString("Description is required."),
+    weight: optionalNonEmptyTrimmedString("Weight is required."),
+    packSize: optionalNonEmptyTrimmedString("Pack size is required."),
+    imageUrl: optionalTrimmedString,
+    isHot: z.boolean().optional(),
+    isFeatured: z.boolean().optional(),
+  })
+  .superRefine((product, context) => {
+    if (product.originalPrice === undefined || product.discountedPrice === undefined) return
+
+    const discount = (1 - product.discountedPrice / product.originalPrice) * 100
+
+    if (discount < 0 || discount > 100) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discountedPrice"],
+        message: "Discount must be between 0 and 100%.",
+      })
+    }
+  })
+
+export const createOrderSchema = z.object({
+  pickupDate: z
+    .string()
+    .trim()
+    .min(1, "Pickup date is required.")
+    .refine((value) => !Number.isNaN(new Date(value).getTime()), "Enter a valid pickup date."),
+  pickupTime: z.string().trim().min(1, "Pickup time is required."),
 })
 
 export function getZodFieldErrors(error: z.ZodError): Record<string, string> {

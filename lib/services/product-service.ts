@@ -1,21 +1,52 @@
-import { PRODUCTS } from "@/lib/mock-data"
+import { apiRequest, isApiClientError } from "@/lib/api-client"
+import type { ApiProduct, ProductListQuery } from "@/lib/api-contracts"
 import type { Product } from "@/lib/types"
 
 function cloneProduct(product: Product): Product {
   return { ...product }
 }
 
-function categoryToId(category: string) {
-  return category.toLowerCase().replace(/\s+/g, "-")
+function productListPath(query: ProductListQuery = {}) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") {
+      params.set(key, String(value))
+    }
+  }
+
+  const queryString = params.toString()
+
+  return queryString ? `/api/products?${queryString}` : "/api/products"
 }
 
-export async function getProducts(): Promise<Product[]> {
-  return PRODUCTS.map(cloneProduct)
+export async function getProducts(query: ProductListQuery = {}): Promise<Product[]> {
+  const { products } = await apiRequest<{
+    products: ApiProduct[]
+    pagination: {
+      page: number
+      pageSize: number
+      total: number
+    }
+  }>(productListPath(query))
+
+  return products.map(cloneProduct)
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
-  const product = PRODUCTS.find((item) => item.id === id)
-  return product ? cloneProduct(product) : null
+  try {
+    const { product } = await apiRequest<{ product: ApiProduct }>(
+      `/api/products/${encodeURIComponent(id)}`,
+    )
+
+    return cloneProduct(product)
+  } catch (error) {
+    if (isApiClientError(error) && error.code === "NOT_FOUND") {
+      return null
+    }
+
+    throw error
+  }
 }
 
 export async function searchProducts(query: string): Promise<Product[]> {
@@ -23,26 +54,21 @@ export async function searchProducts(query: string): Promise<Product[]> {
 
   if (!normalizedQuery) return getProducts()
 
-  return PRODUCTS.filter(
-    (product) =>
-      product.name.toLowerCase().includes(normalizedQuery) ||
-      product.seller.toLowerCase().includes(normalizedQuery) ||
-      product.brand.toLowerCase().includes(normalizedQuery),
-  ).map(cloneProduct)
+  return getProducts({ search: normalizedQuery })
 }
 
 export async function getProductsByCategory(categoryId: string): Promise<Product[]> {
-  return PRODUCTS.filter((product) => categoryToId(product.category) === categoryId).map(cloneProduct)
+  return getProducts({ categoryId })
 }
 
 export async function getFeaturedProducts(): Promise<Product[]> {
-  return PRODUCTS.filter((product) => product.isFeatured).map(cloneProduct)
+  return getProducts({ featured: true })
 }
 
 export async function getHotProducts(): Promise<Product[]> {
-  return PRODUCTS.filter((product) => product.isHot).map(cloneProduct)
+  return getProducts({ hot: true })
 }
 
 export async function getExpiringProducts(maxDaysUntilExpiry = 14): Promise<Product[]> {
-  return PRODUCTS.filter((product) => product.daysUntilExpiry <= maxDaysUntilExpiry).map(cloneProduct)
+  return getProducts({ maxDaysUntilExpiry })
 }

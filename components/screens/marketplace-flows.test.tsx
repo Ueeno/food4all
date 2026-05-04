@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AppStateProvider,
   useAppState,
@@ -28,6 +28,7 @@ import {
   SellerVerifyPickupScreen,
 } from "@/components/screens/seller-screens"
 import { LOCAL_STORAGE_KEYS } from "@/lib/local-storage"
+import { apiErrorResponse, installMarketplaceFetchMock } from "@/test/api-fetch-mock"
 
 const TEST_CART_ITEM: CartItem = {
   id: "p1",
@@ -134,12 +135,17 @@ async function advanceTimers(milliseconds: number) {
   })
 }
 
+beforeEach(() => {
+  installMarketplaceFetchMock()
+})
+
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe("rendered buyer marketplace flow", () => {
-  it("renders buyer product cards from the mock service", async () => {
+  it("renders buyer product cards from the product service boundary", async () => {
     renderWithAppState(<BuyerProductListScreen />, <SeedRole role="buyer" />)
 
     expect(await screen.findByRole("heading", { name: /browse products/i })).toBeInTheDocument()
@@ -149,7 +155,9 @@ describe("rendered buyer marketplace flow", () => {
     expect(screen.getByRole("button", { name: /CDO Farmhouse Tocino/i })).toBeInTheDocument()
   })
 
-  it("renders product detail add-to-cart action and updates local cart state", async () => {
+  it("renders product detail add-to-cart action and updates backend cart state", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
     renderWithAppState(
       <BuyerProductDetailScreen />,
       <>
@@ -163,8 +171,11 @@ describe("rendered buyer marketplace flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /add to cart/i }))
 
     expect(screen.getByRole("button", { name: /added/i })).toBeInTheDocument()
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("1")
-    expect(getStoredCartItems()).toMatchObject([{ id: "p1", quantity: 1 }])
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("1")
+    })
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain("/api/cart/items")
+    expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
   })
 
   it("adding the same product twice increases quantity", async () => {
@@ -178,12 +189,16 @@ describe("rendered buyer marketplace flow", () => {
     )
 
     expect(await screen.findByRole("heading", { name: /Purefoods Tender Juicy Hotdog/i })).toBeInTheDocument()
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+    })
 
     fireEvent.click(screen.getByRole("button", { name: /add to cart/i }))
 
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("3")
-    expect(screen.getByTestId("cart-total")).toHaveTextContent("555")
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("3")
+      expect(screen.getByTestId("cart-total")).toHaveTextContent("555")
+    })
   })
 
   it("renders the empty cart state", () => {
@@ -204,7 +219,9 @@ describe("rendered buyer marketplace flow", () => {
     )
 
     expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+    })
     expect(screen.getByRole("button", { name: /reserve & checkout/i })).toBeInTheDocument()
 
     fireEvent.click(
@@ -235,19 +252,23 @@ describe("rendered buyer marketplace flow", () => {
       screen.getByRole("button", { name: /increase quantity for purefoods tender juicy hotdog/i }),
     )
 
-    expect(screen.getByLabelText("Quantity for Purefoods Tender Juicy Hotdog")).toHaveTextContent("3")
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("3")
-    expect(screen.getByTestId("cart-total")).toHaveTextContent("555")
-    expect(getStoredCartItems()).toMatchObject([{ id: "p1", quantity: 3 }])
+    await waitFor(() => {
+      expect(screen.getByLabelText("Quantity for Purefoods Tender Juicy Hotdog")).toHaveTextContent("3")
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("3")
+      expect(screen.getByTestId("cart-total")).toHaveTextContent("555")
+    })
+    expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
 
     fireEvent.click(
       screen.getByRole("button", { name: /decrease quantity for purefoods tender juicy hotdog/i }),
     )
 
-    expect(screen.getByLabelText("Quantity for Purefoods Tender Juicy Hotdog")).toHaveTextContent("2")
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
-    expect(screen.getByTestId("cart-total")).toHaveTextContent("370")
-    expect(getStoredCartItems()).toMatchObject([{ id: "p1", quantity: 2 }])
+    await waitFor(() => {
+      expect(screen.getByLabelText("Quantity for Purefoods Tender Juicy Hotdog")).toHaveTextContent("2")
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+      expect(screen.getByTestId("cart-total")).toHaveTextContent("370")
+    })
+    expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
   })
 
   it("removes cart item when decrementing at quantity one", async () => {
@@ -303,6 +324,9 @@ describe("rendered buyer marketplace flow", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /increase quantity for purefoods tender juicy hotdog/i }),
     )
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("3")
+    })
     fireEvent.click(screen.getByRole("button", { name: /reserve & checkout/i }))
 
     expect(screen.getByRole("heading", { name: /checkout/i })).toBeInTheDocument()
@@ -311,7 +335,7 @@ describe("rendered buyer marketplace flow", () => {
     expect(screen.getByTestId("cart-total")).toHaveTextContent("555")
   })
 
-  it("renders checkout summary and confirms the mock reservation", async () => {
+  it("renders checkout summary and confirms the reservation through the order API", async () => {
     renderWithAppState(
       <BuyerCheckoutScreen />,
       <>
@@ -325,13 +349,60 @@ describe("rendered buyer marketplace flow", () => {
     expect(screen.getByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /confirm reservation/i })).toBeInTheDocument()
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole("button", { name: /confirm reservation/i }))
-    await advanceTimers(1600)
 
-    expect(screen.getByTestId("cart-count")).toHaveTextContent("0")
+    await waitFor(() => {
+      expect(screen.getByTestId("cart-count")).toHaveTextContent("0")
+    })
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
     expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
+  })
+
+  it("shows a visible checkout error when the order API fails", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const failingFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders" && (init?.method ?? "GET") === "POST") {
+        return apiErrorResponse("CONFLICT", "Your cart is empty.", 409)
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", failingFetch)
+
+    renderWithAppState(
+      <BuyerCheckoutScreen />,
+      <>
+        <SeedRole role="buyer" />
+        <SeedCartItem />
+      </>,
+    )
+
+    expect(await screen.findByRole("heading", { name: /checkout/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm reservation/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your cart is empty.")
+    expect(screen.getByTestId("screen")).not.toHaveTextContent("buyer-pickup-qr")
+  })
+
+  it("keeps local cart fallback when the cart API is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("Cart API unavailable")
+      }),
+    )
+
+    renderWithAppState(<BuyerCartScreen />, <SeedCartItem />)
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+    expect(screen.getByTestId("cart-count")).toHaveTextContent("2")
+    expect(getStoredCartItems()).toMatchObject([{ id: "p1", quantity: 2 }])
   })
 })
 
@@ -427,13 +498,118 @@ describe("rendered seller marketplace flow", () => {
     expect(screen.getByText("Total Sales")).toBeInTheDocument()
   })
 
-  it("renders seller products from the mock service", async () => {
+  it("renders seller products from the backend-backed seller service", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
     renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
 
     expect(await screen.findByRole("heading", { name: /my products/i })).toBeInTheDocument()
     expect(screen.getByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /edit purefoods tender juicy hotdog/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /delete purefoods tender juicy hotdog/i })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/products", expect.any(Object))
+  })
+
+  it("opens a prefilled seller product edit form and can cancel it", async () => {
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /edit purefoods tender juicy hotdog/i }))
+
+    expect(screen.getByRole("heading", { name: /edit product/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/product name/i)).toHaveValue("Purefoods Tender Juicy Hotdog")
+    expect(screen.getByLabelText(/^brand$/i)).toHaveValue("Purefoods")
+    expect(screen.getByLabelText(/original price/i)).toHaveValue(285)
+    expect(screen.getByLabelText(/discounted price/i)).toHaveValue(185)
+    expect(screen.getByLabelText(/available quantity/i)).toHaveValue(48)
+
+    fireEvent.click(screen.getAllByRole("button", { name: /cancel/i })[0]!)
+
+    expect(screen.queryByRole("heading", { name: /edit product/i })).not.toBeInTheDocument()
+  })
+
+  it("blocks invalid seller product edits with visible validation errors", async () => {
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /edit purefoods tender juicy hotdog/i }))
+    fireEvent.change(screen.getByLabelText(/product name/i), { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText(/discounted price/i), { target: { value: "500" } })
+    fireEvent.change(screen.getByLabelText(/available quantity/i), { target: { value: "1.5" } })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    expect(screen.getByText("Product name is required.")).toBeInTheDocument()
+    expect(screen.getByText("Discount must be between 0 and 100%.")).toBeInTheDocument()
+    expect(screen.getByText("Quantity must be a non-negative whole number.")).toBeInTheDocument()
+  })
+
+  it("saves seller product edits through the update API and refreshes the list", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /edit purefoods tender juicy hotdog/i }))
+    fireEvent.change(screen.getByLabelText(/product name/i), {
+      target: { value: "Task 021 Updated Hotdog" },
+    })
+    fireEvent.change(screen.getByLabelText(/discounted price/i), { target: { value: "175" } })
+    fireEvent.change(screen.getByLabelText(/available quantity/i), { target: { value: "9" } })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Task 021 Updated Hotdog was updated.")
+    expect(screen.queryByRole("heading", { name: /edit product/i })).not.toBeInTheDocument()
+    expect(screen.getByText("Task 021 Updated Hotdog")).toBeInTheDocument()
+    expect(screen.getByText("9 left")).toBeInTheDocument()
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/api/seller/products",
+      "/api/seller/products/p1",
+      "/api/seller/products",
+    ])
+
+    const patchInit = fetchMock.mock.calls[1]?.[1] as RequestInit
+
+    expect(patchInit.method).toBe("PATCH")
+    expect(JSON.parse(String(patchInit.body))).toMatchObject({
+      name: "Task 021 Updated Hotdog",
+      discountedPrice: 175,
+      quantity: 9,
+    })
+  })
+
+  it("shows seller product edit API failures without closing the form", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const failingFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/seller/products/p1" && init?.method === "PATCH") {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          name: "Product name is required.",
+        })
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", failingFetch)
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /edit purefoods tender juicy hotdog/i }))
+    fireEvent.change(screen.getByLabelText(/product name/i), {
+      target: { value: "Backend Rejected Hotdog" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please fix the highlighted fields.")
+    expect(screen.getByText("Product name is required.")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /edit product/i })).toBeInTheDocument()
   })
 
   it("renders seller orders and switches order tabs", async () => {
@@ -534,8 +710,7 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByTestId("screen")).not.toHaveTextContent("seller-products")
   })
 
-  it("renders seller add-product form and submits the valid mock listing flow", async () => {
-    vi.useFakeTimers()
+  it("renders seller add-product form and submits through the seller service", async () => {
     renderWithAppState(<SellerAddProductScreen />, <SeedRole role="seller" />)
 
     expect(screen.getByRole("heading", { name: /upload product/i })).toBeInTheDocument()
@@ -554,7 +729,7 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByAltText("Product preview")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText(/product name/i), {
-      target: { value: "Purefoods Tender Juicy Hotdog" },
+      target: { value: "Task 019 Seller Hotdog" },
     })
     fireEvent.change(screen.getByLabelText(/^brand$/i), { target: { value: "Purefoods" } })
     fireEvent.change(screen.getByLabelText(/original price/i), { target: { value: "285" } })
@@ -569,9 +744,42 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByText("35% OFF")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /publish listing/i }))
-    await advanceTimers(1400)
 
-    expect(screen.getByTestId("screen")).toHaveTextContent("seller-products")
+    expect(await screen.findByRole("status")).toHaveTextContent("Product listing published.")
+    await waitFor(() => {
+      expect(screen.getByTestId("screen")).toHaveTextContent("seller-products")
+    })
+  })
+
+  it("shows a visible seller add-product API failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          brand: "Brand is required.",
+        }),
+      ),
+    )
+    renderWithAppState(<SellerAddProductScreen />, <SeedRole role="seller" />)
+
+    fireEvent.change(screen.getByLabelText(/product name/i), {
+      target: { value: "Purefoods Tender Juicy Hotdog" },
+    })
+    fireEvent.change(screen.getByLabelText(/^brand$/i), { target: { value: "Purefoods" } })
+    fireEvent.change(screen.getByLabelText(/original price/i), { target: { value: "285" } })
+    fireEvent.change(screen.getByLabelText(/discounted price/i), { target: { value: "185" } })
+    fireEvent.change(screen.getByLabelText(/available quantity/i), { target: { value: "48" } })
+    fireEvent.change(screen.getByLabelText(/expiry date/i), { target: { value: "2026-05-12" } })
+    fireEvent.change(screen.getByLabelText(/pickup address/i), {
+      target: { value: "Magsaysay Market, Davao City" },
+    })
+    fireEvent.change(screen.getByLabelText(/store hours/i), { target: { value: "7:00 AM - 5:00 PM" } })
+
+    fireEvent.click(screen.getByRole("button", { name: /publish listing/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please fix the highlighted fields.")
+    expect(screen.getByText("Brand is required.")).toBeInTheDocument()
+    expect(screen.getByTestId("screen")).not.toHaveTextContent("seller-products")
   })
 
   it("renders seller reports with metric cards, chart bars, and top products", async () => {
@@ -614,5 +822,27 @@ describe("rendered remaining seller mock flows", () => {
 
     expect(screen.getByText("Hidden from listings")).toBeInTheDocument()
     expect(screen.getByRole("switch", { name: /store closed/i })).toHaveAttribute("aria-checked", "false")
+  })
+
+  it("deletes seller products through the seller service", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Chicken Nuggets Supreme")).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /delete chicken nuggets supreme/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByText("Chicken Nuggets Supreme")).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole("status")).toHaveTextContent("Chicken Nuggets Supreme was deleted.")
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/api/seller/products",
+      "/api/seller/products/p3",
+      "/api/seller/products",
+    ])
   })
 })

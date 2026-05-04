@@ -87,6 +87,7 @@ export type ApiProduct = Product & {
 
 export type ApiCartItem = CartItem & {
   productId: string
+  lineTotal: number
   updatedAt: string
 }
 
@@ -173,10 +174,16 @@ export interface SellerProductRequest {
 }
 
 export type SellerProductResponse = ApiResponse<{ product: ApiProduct }>
+export type SellerProductListResponse = ApiResponse<{ products: ApiProduct[] }>
 
 export type CategoryListResponse = ApiResponse<{ categories: ApiCategory[] }>
 
-export type CartResponse = ApiResponse<{ items: ApiCartItem[] }>
+export type CartResponse = ApiResponse<{
+  items: ApiCartItem[]
+  itemCount: number
+  subtotal: number
+  total: number
+}>
 
 export interface AddCartItemRequest {
   productId: string

@@ -1,13 +1,19 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { installMarketplaceFetchMock } from "@/test/api-fetch-mock"
 import { clearCart, addToCart, getCart, removeFromCart, updateCartItem } from "./cart-service"
 import { getCategories } from "./category-service"
 import { getSellerOrders, verifyPickupCode } from "./order-service"
 import { getProductById, getProducts } from "./product-service"
 import { getSellerDashboard, getSellerProducts } from "./seller-service"
 
-describe("mock service contracts", () => {
+describe("service contracts", () => {
   beforeEach(async () => {
+    installMarketplaceFetchMock()
     await clearCart()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it("returns products and can find a product by id", async () => {

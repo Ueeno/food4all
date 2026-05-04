@@ -1,6 +1,9 @@
-import { CATEGORIES } from "@/lib/mock-data"
+import { apiRequest } from "@/lib/api-client"
+import type { ApiCategory } from "@/lib/api-contracts"
 import type { Category } from "@/lib/types"
 
 export async function getCategories(): Promise<Category[]> {
-  return CATEGORIES.map((category) => ({ ...category }))
+  const { categories } = await apiRequest<{ categories: ApiCategory[] }>("/api/categories")
+
+  return categories.map((category) => ({ ...category }))
 }
