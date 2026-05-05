@@ -1,41 +1,86 @@
 # FOOD4ALL Backend Contract
 
-Status: planning contract only. This document does not implement backend, database, route handlers, network calls, or persistence beyond the existing temporary frontend `localStorage` layer for auth/session/cart.
+**Status: Active Implementation**
 
-## Recommended Architecture
+This document describes the FOOD4ALL backend API contract for the Next.js application. The backend is **fully implemented** with Next.js route handlers, Prisma ORM, SQLite (development), and PostgreSQL-ready schema.
 
-Use Next.js route handlers under `app/api/**/route.ts` for the first backend implementation.
+## Architecture
 
-Recommended stack:
+**Implemented Stack:**
 
-- Runtime: Next.js route handlers in the existing app.
-- ORM: Prisma.
-- Local database: SQLite for fast local development.
-- Production database: PostgreSQL-ready Prisma schema.
-- Password hashing: bcrypt or a compatible strong password hashing library.
-- Session strategy: server-managed opaque session IDs stored in an HTTP-only, secure, same-site cookie, backed by a `Session` table.
-- Image uploads: deferred. Store `imageUrl` as a string first; later replace it with object storage such as S3/R2/Vercel Blob.
+- **Runtime**: Next.js 16 route handlers in `app/api/`
+- **ORM**: Prisma 7.8 with automatic client generation
+- **Local Database**: SQLite via better-sqlite3 (`prisma/dev.db`)
+- **Production Database**: PostgreSQL (schema is production-ready; deploy with `DATABASE_URL` environment variable)
+- **Password Hashing**: bcryptjs for secure password storage
+- **Session Strategy**: Server-managed opaque session IDs stored in HTTP-only, secure, same-site cookies, backed by the `Session` table
+- **Input Validation**: Zod for request schema validation in `lib/api/validation.ts`
+- **Testing**: Vitest with test database reset utilities in `test/test-db.ts`
 
-Why this fits the repo:
+## Implementation Structure
 
-- The app is already a Next.js React project, so route handlers avoid adding a separate server framework.
-- The frontend already has typed service modules under `lib/services/`; those can later swap their mock implementations for calls to route handlers.
-- Prisma gives a single schema for SQLite development and PostgreSQL production.
-- Server-owned opaque sessions are easier to revoke than stateless JWTs and avoid storing tokens in frontend state.
-- The current mock/local app state can remain intact during migration while endpoints are implemented one service at a time.
+**Backend Route Handlers**
 
-## Current Boundary
+All API routes are located in `app/api/`:
 
-Current frontend services are mock-only:
+- Authentication: `app/api/auth/*/route.ts`
+- Products: `app/api/products/*/route.ts`
+- Categories: `app/api/categories/route.ts`
+- Cart: `app/api/cart/*/route.ts`
+- Orders: `app/api/orders/*/route.ts`
+- Seller Operations: `app/api/seller/*/route.ts`
+- Pickup Verification: `app/api/pickup/*/route.ts`
+- Health Check: `app/api/health/route.ts`
 
-- `lib/services/auth-service.ts`
-- `lib/services/product-service.ts`
-- `lib/services/category-service.ts`
-- `lib/services/cart-service.ts`
-- `lib/services/order-service.ts`
-- `lib/services/seller-service.ts`
+**Backend Utilities**
 
-Task 014 does not replace these services. The next backend implementation task should add route handlers and tests first, then migrate service modules only after API behavior is verified.
+- `lib/api/auth.ts`: Session creation, validation, and cookie management
+- `lib/api/response.ts`: Standardized response envelopes (success, error, validation error, etc.)
+- `lib/api/validation.ts`: Zod schemas for all endpoints
+- `lib/api/mappers.ts`: DTO mapping from database models to API responses
+- `lib/api/seller-auth.ts`: Seller role verification helpers
+- `lib/prisma.ts`: Prisma client singleton
+
+**Testing**
+
+- `app/api/backend-routes.test.ts`: Comprehensive test suite covering all API endpoints
+- `test/test-db.ts`: Test database utilities (reset, setup, teardown)
+- `lib/api/*.test.ts`: Unit tests for mappers, validation, and responses
+
+## Known Limitations
+
+The following features are **fully SQL-backed and verified working**:
+
+- User authentication (register, login, logout, session management)
+- Role selection (buyer/seller)
+- Product listing, search, and detail views
+- Category browsing
+- Shopping cart management
+- Order creation and status tracking
+- Seller product CRUD operations
+- Seller order management and status updates
+- Pickup code generation and verification
+- Basic seller dashboard metrics
+- Seller profile management
+
+The following features are **partially implemented or use fallback values**:
+
+- **Image Upload**: Endpoints accept `imageUrl` as a string; file upload backend is not finalized
+- **Buyer Profile**: Basic storage exists but profile stats are presentation-only
+- **Seller Profile Stats**: Some derived metrics (e.g., "meals saved") use neutral fallback values
+- **Seller Waste Reports**: Returns placeholder values pending full business logic
+- **Seller Meal Count**: Returns placeholder values pending calculation implementation
+- **Seller Business Hours**: Stored in schema but UI integration is incomplete
+
+The following features are **not implemented**:
+
+- **Payment Processing**: Checkout creates orders but no payment gateway is integrated
+- **Advanced Notifications**: Real-time notifications or push alerts
+- **Customer Reviews/Ratings**: Review system for products and sellers
+- **Wishlist**: Product favoriting
+- **Full-Text Search**: Only category filtering is implemented
+- **Multi-Language**: English only
+- **Production Database Deployment Automation**: Manual PostgreSQL setup required
 
 ## Shared API Rules
 
