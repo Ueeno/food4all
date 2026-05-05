@@ -7,6 +7,7 @@ import { isApiClientError } from "@/lib/api-client"
 import { BottomNav } from "@/components/bottom-nav"
 import { GlassButton } from "@/components/glass-button"
 import { LoadingView } from "@/components/food4all"
+import { getCategories } from "@/lib/services/category-service"
 import { getSellerOrders, updateSellerOrderStatus, verifyPickupCode } from "@/lib/services/order-service"
 import {
   createProduct,
@@ -17,7 +18,7 @@ import {
   updateProduct,
   updateSellerProfile,
 } from "@/lib/services/seller-service"
-import type { Order, Product, ProductInput, Seller, SellerReports } from "@/lib/types"
+import type { Category, Order, Product, ProductInput, Seller, SellerReports } from "@/lib/types"
 import {
   ChevronLeft,
   Upload,
@@ -239,7 +240,7 @@ export function SellerAddProductScreen() {
   const [form, setForm] = useState<SellerProductForm>({
     name: "",
     brand: "",
-    category: "hotdogs",
+    category: "",
     originalPrice: "",
     discountedPrice: "",
     quantity: "",
@@ -249,6 +250,41 @@ export function SellerAddProductScreen() {
     pickupHours: "",
     description: "",
   })
+  const [categories, setCategories] = useState<Category[]>([])
+  const [profile, setProfile] = useState<Seller | null>(null)
+  const [initializing, setInitializing] = useState(true)
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadData() {
+      try {
+        const [nextCategories, nextProfile] = await Promise.all([
+          getCategories(),
+          getSellerProfile(),
+        ])
+
+        if (ignore) return
+
+        setCategories(nextCategories)
+        setProfile(nextProfile)
+        setForm((f) => ({
+          ...f,
+          category: nextCategories[0]?.id || "",
+          pickupAddress: nextProfile.address || "",
+        }))
+      } catch {
+        setSubmitError("Failed to initialize product form.")
+      } finally {
+        if (!ignore) setInitializing(false)
+      }
+    }
+
+    loadData()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   const update = (k: keyof typeof form, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -272,7 +308,7 @@ export function SellerAddProductScreen() {
       quantity,
       unit: "packs",
       expiryDate: form.expiryDate,
-      seller: "Magsaysay Meat Depot",
+      seller: profile?.businessName || "Seller",
       location: form.pickupAddress.trim(),
       barangay: "",
       pickupHours: form.pickupHours.trim(),
@@ -312,7 +348,6 @@ export function SellerAddProductScreen() {
     }
   }
 
-  const categories = ["Hotdogs", "Sausages", "Tocino", "Bacon", "Ham", "Frozen Foods", "Bundle Deals"]
 
   const suggestedDiscount = form.expiryDate
     ? (() => {
@@ -341,6 +376,14 @@ export function SellerAddProductScreen() {
 
   const discountCalc =
     rawDiscountCalc !== null && rawDiscountCalc >= 0 && rawDiscountCalc <= 100 ? rawDiscountCalc : null
+
+  if (initializing) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <LoadingView label="Preparing upload form..." className="flex-1" />
+      </div>
+    )
+  }
 
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
@@ -390,8 +433,8 @@ export function SellerAddProductScreen() {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: <Camera className="w-6 h-6 text-primary" />, label: "Take Photo", img: "/images/hotdogs.jpg" },
-                { icon: <Upload className="w-6 h-6 text-primary" />, label: "Upload Image", img: "/images/tocino.jpg" },
+                { icon: <Camera className="w-6 h-6 text-primary" />, label: "Sample Photo A", img: "/images/hotdogs.jpg" },
+                { icon: <Upload className="w-6 h-6 text-primary" />, label: "Sample Photo B", img: "/images/tocino.jpg" },
               ].map(({ icon, label, img }) => (
                 <button
                   key={label}
@@ -429,16 +472,16 @@ export function SellerAddProductScreen() {
             <div className="flex flex-wrap gap-2" role="group" aria-label="Category">
               {categories.map((cat) => (
                 <button
-                  key={cat}
+                  key={cat.id}
                   type="button"
-                  onClick={() => update("category", cat.toLowerCase())}
+                  onClick={() => update("category", cat.id)}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all ${
-                    form.category === cat.toLowerCase()
+                    form.category === cat.id
                       ? "sky-gradient text-white shadow-md"
                       : "bg-muted text-foreground/70 hover:bg-muted/80"
                   }`}
                 >
-                  {cat}
+                  {cat.label}
                 </button>
               ))}
             </div>
@@ -604,6 +647,7 @@ export function SellerAddProductScreen() {
 export function SellerProductsScreen() {
   const { navigate } = useAppState()
   const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -616,16 +660,20 @@ export function SellerProductsScreen() {
   useEffect(() => {
     let ignore = false
 
-    async function loadProducts() {
-      const nextProducts = await getSellerProducts()
+    async function loadData() {
+      const [nextProducts, nextCategories] = await Promise.all([
+        getSellerProducts(),
+        getCategories(),
+      ])
 
       if (ignore) return
 
       setProducts(nextProducts)
+      setCategories(nextCategories)
       setLoading(false)
     }
 
-    loadProducts()
+    loadData()
 
     return () => {
       ignore = true
@@ -792,18 +840,18 @@ export function SellerProductsScreen() {
             <div>
               <label className="text-xs font-semibold text-foreground/80 mb-1.5 block">Category</label>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Edit category">
-                {["Hotdogs", "Sausages", "Tocino", "Bacon", "Ham", "Frozen Foods", "Bundle Deals"].map((cat) => (
+                {categories.map((cat) => (
                   <button
-                    key={cat}
+                    key={cat.id}
                     type="button"
-                    onClick={() => updateEditField("category", cat.toLowerCase())}
+                    onClick={() => updateEditField("category", cat.id)}
                     className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all ${
-                      editForm.category === cat.toLowerCase()
+                      editForm.category === cat.id
                         ? "sky-gradient text-white shadow-md"
                         : "bg-muted text-foreground/70 hover:bg-muted/80"
                     }`}
                   >
-                    {cat}
+                    {cat.label}
                   </button>
                 ))}
               </div>

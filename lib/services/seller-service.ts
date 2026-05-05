@@ -19,18 +19,6 @@ import type {
 } from "@/lib/types"
 
 
-const MOCK_SELLER: Seller = {
-  id: "seller-magsaysay-meat-depot",
-  businessName: "Magsaysay Meat Depot",
-  email: "seller@food4all.local",
-  address: "Magsaysay Market, Poblacion District, Davao City 8000",
-  barangay: "Poblacion District",
-  contactNumber: "+63 912 345 6789",
-  rating: 4.8,
-  isOpen: true,
-  verificationStatus: "verified",
-}
-
 function cloneProduct(product: Product): Product {
   return { ...product }
 }
@@ -60,21 +48,17 @@ type SellerReportsPayload = {
   topProducts: ApiSellerReportTopProduct[]
 }
 
-function categoryToId(category: string) {
-  return category.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-}
-
 function productInputToSellerRequest(input: ProductInput): SellerProductRequest {
   return {
     name: input.name,
     brand: input.brand,
-    categoryId: categoryToId(input.category),
+    categoryId: input.category, // Pass category ID/slug directly
     originalPrice: input.originalPrice,
     discountedPrice: input.discountedPrice,
     quantity: input.quantity,
     unit: input.unit,
     expiryDate: input.expiryDate,
-    pickupAddress: input.location.trim() || MOCK_SELLER.address,
+    pickupAddress: input.location.trim(),
     pickupHours: input.pickupHours,
     description: input.description,
     weight: input.weight,
@@ -87,13 +71,13 @@ function productInputPatchToSellerRequest(input: Partial<ProductInput>): Partial
   return {
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.brand !== undefined ? { brand: input.brand } : {}),
-    ...(input.category !== undefined ? { categoryId: categoryToId(input.category) } : {}),
+    ...(input.category !== undefined ? { categoryId: input.category } : {}),
     ...(input.originalPrice !== undefined ? { originalPrice: input.originalPrice } : {}),
     ...(input.discountedPrice !== undefined ? { discountedPrice: input.discountedPrice } : {}),
     ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
     ...(input.expiryDate !== undefined ? { expiryDate: input.expiryDate } : {}),
-    ...(input.location !== undefined ? { pickupAddress: input.location.trim() || MOCK_SELLER.address } : {}),
+    ...(input.location !== undefined ? { pickupAddress: input.location.trim() } : {}),
     ...(input.pickupHours !== undefined ? { pickupHours: input.pickupHours } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.weight !== undefined ? { weight: input.weight } : {}),

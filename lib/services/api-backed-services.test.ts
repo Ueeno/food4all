@@ -343,7 +343,7 @@ describe("API-backed seller product mutation service", () => {
     expect(init.method).toBe("POST")
     expect(JSON.parse(String(init.body))).toMatchObject({
       name: "API Seller Hotdogs",
-      categoryId: "hotdogs",
+      categoryId: "Hotdogs",
       originalPrice: 300,
       discountedPrice: 180,
       quantity: 18,

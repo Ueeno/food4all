@@ -66,7 +66,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Added local app-state `updateCartQuantity`, `incrementCartItem`, and `decrementCartItem` behavior so cart items can increase, decrease, and be removed when quantity reaches zero.
 - Wired buyer cart increment/decrement controls and accessible quantity labels to shared local app state while keeping the flow mock/local only.
 - Added rendered cart tests covering adding an existing product, quantity increment, quantity decrement, decrement-at-one removal, updated cart totals, and checkout summary quantities.
-- Existing service-contract, navigation-guard, local auth-flow, rendered auth component, and rendered marketplace-flow tests remained passing.
+- Existing service-contract, navigation-guard, local auth-flow, rendered auth component, rendered marketplace-flow, and cart quantity tests remained passing.
 - Verification passed after Task 010: `corepack pnpm test` (5 files, 46 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
 - 2026-05-04: Task 011 completed for focused rendered coverage of remaining mock buyer and seller flows.
 - Added rendered buyer coverage for order-history cards and tab switching, pickup QR details and claimed confirmation, and buyer profile information/actions.
@@ -286,6 +286,15 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Adjusted the blue header's bottom padding from `pb-20` to `pb-8` to maintain a balanced visual spacing without the negative margin overlap.
 - Verified that the avatar, initials, business name, and badges are now fully visible and no longer clipped.
 - Verification passed: `corepack pnpm test` (204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 041 completed for cleaning seller add-product static category/profile fallback behavior.
+- Loaded categories through `getCategories()` in `SellerAddProductScreen` and `SellerProductsScreen`, removing hardcoded category arrays.
+- Loaded seller profile through `getSellerProfile()` in `SellerAddProductScreen` to pre-fill pickup address and use actual business name instead of hardcoded `MOCK_SELLER` constant.
+- Removed `MOCK_SELLER` constant and address fallbacks from `seller-service.ts`.
+- Updated `SellerAddProductScreen` with an initialization loading state and dynamic category/profile data.
+- Updated simulated image upload labels to be transparent about being placeholders ("Sample Photo A/B").
+- Updated `test/api-fetch-mock.ts` and `api-backed-services.test.ts` to use real profile data and match the updated category/label behavior.
+- Updated `marketplace-flows.test.tsx` to handle the new initialization loading state and updated labels in seller add-product tests.
+- Verification passed: `corepack pnpm test` (204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
 
 ## Finished
 - Task 001: React/Next marketplace is buildable and type-checkable.
@@ -323,6 +332,8 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Task 034: Frontend login/register/logout/current-user hydration now use the SQL-backed auth service endpoints, with rendered coverage for success, API failure, logout cleanup, `/api/auth/me` hydration, and backend role selection.
 - Task 035: Buyer checkout now submits the selected pickup date/time to SQL-backed order creation, and created/order-history DTOs preserve the selected pickup slot.
 - Task 036: Buyer pickup QR can recover order detail from `GET /api/orders/[id]` using selected order id, with buyer-only ownership enforcement and pickup location shown where derivable.
+- Task 040: SellerProfileScreen layout clipping fixed and verified.
+- Task 041: Seller add-product static categories and profile fallbacks removed and verified.
 - `build` passes with TypeScript errors no longer hidden.
 - `lint` passes with no warnings or errors.
 - `typecheck` passes.
@@ -370,7 +381,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Service, API client, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, typed API envelope handling, service API calls, pure navigation boundaries, app-state transitions, key rendered SQL-backed auth/logout/hydration behavior, buyer/seller mock marketplace flows, backend-backed buyer cart and buyer order behavior including selected pickup date/time persistence and buyer order detail recovery, seller dashboard/report/profile behavior, remaining buyer profile screen behavior, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and backend route behavior including order creation/listing/detail.
 
 ## Broken or Risky
-- No Task 001-036 build/typecheck/lint/test blocker remains after verification.
+- No Task 001-041 build/typecheck/lint/test blocker remains after verification.
 - Seller profile sales/products/orders stats and business hours remain presentation-only because the current seller profile schema does not persist those fields.
 - Seller report waste-reduced and meals-saved metrics are neutral `0` fallbacks because the current schema does not store normalized waste or meal-equivalent data.
 - Buyer order-history savings/waste metrics are neutral because the current order API/service DTO does not expose savings or waste values yet.
@@ -386,7 +397,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 040: Completed and verified.
+- Task 041: Completed and verified.
 
 ## Next Recommended Work
 - Task 037: Choose the next narrow backend-backed workflow, likely buyer profile or production migration history, and keep browser/e2e coverage as a separate scoped task.

@@ -1217,9 +1217,9 @@ describe("rendered remaining seller mock flows", () => {
   it("renders seller add-product form and submits through the seller service", async () => {
     renderWithAppState(<SellerAddProductScreen />, <SeedRole role="seller" />)
 
-    expect(screen.getByRole("heading", { name: /upload product/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /take photo/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /upload image/i })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: /upload product/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /sample photo a/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /sample photo b/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/product name/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/^brand$/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /hotdogs/i })).toBeInTheDocument()
@@ -1229,7 +1229,7 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByLabelText(/expiry date/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/pickup address/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: /take photo/i }))
+    fireEvent.click(screen.getByRole("button", { name: /sample photo a/i }))
     expect(screen.getByAltText("Product preview")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText(/product name/i), {
@@ -1275,6 +1275,8 @@ describe("rendered remaining seller mock flows", () => {
       }),
     )
     renderWithAppState(<SellerAddProductScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByRole("heading", { name: /upload product/i })).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText(/product name/i), {
       target: { value: "Purefoods Tender Juicy Hotdog" },
