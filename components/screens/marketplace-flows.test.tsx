@@ -61,6 +61,7 @@ const READY_API_ORDER: ApiOrder = {
   pickupDate: "2030-06-01",
   pickupTime: "2:00 PM",
   pickupCode: "****7X29",
+  pickupLocation: "SQL Magsaysay Market, Poblacion District, Davao City",
   items: [
     {
       id: "item-1",
@@ -106,11 +107,19 @@ function getStoredCartItems() {
   return rawCart ? (JSON.parse(rawCart) as CartItem[]) : []
 }
 
+function fetchCallPath(input: RequestInfo | URL) {
+  if (typeof input === "string") return input
+  if (input instanceof URL) return input.pathname
+  return new URL(input.url, "http://localhost").pathname
+}
+
 function StateProbe() {
   const {
     cartCount,
     cartTotal,
     screen: currentScreen,
+    selectedOrder,
+    selectedOrderId,
     selectedProductId,
     selectedRole,
   } = useAppState()
@@ -120,6 +129,8 @@ function StateProbe() {
       <span data-testid="screen">{currentScreen}</span>
       <span data-testid="selected-role">{selectedRole ?? "none"}</span>
       <span data-testid="selected-product">{selectedProductId ?? "none"}</span>
+      <span data-testid="selected-order-id">{selectedOrderId ?? "none"}</span>
+      <span data-testid="selected-order-pickup-time">{selectedOrder?.pickupTime ?? "none"}</span>
       <span data-testid="cart-count">{cartCount}</span>
       <span data-testid="cart-total">{cartTotal}</span>
     </div>
@@ -161,11 +172,9 @@ function SeedCartItem({ item = TEST_CART_ITEM }: { item?: CartItem }) {
 
 function SeedSelectedProduct({ productId }: { productId: string }) {
   const { selectedProductId, selectProduct } = useAppState()
-  const seededRef = useRef(false)
 
   useEffect(() => {
-    if (!seededRef.current && selectedProductId !== productId) {
-      seededRef.current = true
+    if (selectedProductId !== productId) {
       selectProduct(productId)
     }
   }, [productId, selectProduct, selectedProductId])
@@ -175,14 +184,24 @@ function SeedSelectedProduct({ productId }: { productId: string }) {
 
 function SeedSelectedOrder({ order }: { order: Order }) {
   const { selectOrder, selectedOrder } = useAppState()
-  const seededRef = useRef(false)
 
   useEffect(() => {
-    if (!seededRef.current && selectedOrder?.id !== order.id) {
-      seededRef.current = true
+    if (selectedOrder?.id !== order.id) {
       selectOrder(order)
     }
   }, [order, selectOrder, selectedOrder?.id])
+
+  return null
+}
+
+function SeedSelectedOrderId({ orderId }: { orderId: string }) {
+  const { selectOrderId, selectedOrderId } = useAppState()
+
+  useEffect(() => {
+    if (selectedOrderId !== orderId) {
+      selectOrderId(orderId)
+    }
+  }, [orderId, selectOrderId, selectedOrderId])
 
   return null
 }
@@ -207,6 +226,14 @@ function CheckoutPickupHarness() {
   const { screen: currentScreen } = useAppState()
 
   return currentScreen === "buyer-pickup-qr" ? <BuyerPickupQRScreen /> : <BuyerCheckoutScreen />
+}
+
+function CartCheckoutPickupHarness() {
+  const { screen: currentScreen } = useAppState()
+
+  if (currentScreen === "buyer-checkout") return <BuyerCheckoutScreen />
+  if (currentScreen === "buyer-pickup-qr") return <BuyerPickupQRScreen />
+  return <BuyerCartScreen />
 }
 
 function OrdersPickupHarness() {
@@ -384,6 +411,9 @@ describe("rendered buyer marketplace flow", () => {
     )
 
     expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("selected-role")).toHaveTextContent("buyer")
+    })
 
     fireEvent.click(screen.getByRole("button", { name: /reserve & checkout/i }))
 
@@ -436,10 +466,50 @@ describe("rendered buyer marketplace flow", () => {
     })
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
     expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
-    expect(screen.getByText(/ORD-MOCK-/)).toBeInTheDocument()
+    expect(screen.getAllByText(/ORD-MOCK-/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Purefoods Tender Juicy Hotdog/)).toBeInTheDocument()
     expect(screen.getByLabelText(/qr code for pickup code f4a-mock/i)).toBeInTheDocument()
     expect(localStorage.getItem(LOCAL_STORAGE_KEYS.cartItems)).toBeNull()
+  })
+
+  it("uses the selected pickup slot for checkout order creation and pickup QR", async () => {
+    const fetchMock = installMarketplaceFetchMock()
+
+    renderWithAppState(
+      <CartCheckoutPickupHarness />,
+      <>
+        <SeedRole role="buyer" />
+        <SeedCartItem />
+      </>,
+    )
+
+    expect(await screen.findByText("Purefoods Tender Juicy Hotdog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /tomorrow 10:00 am/i }))
+    expect(screen.getByText("Pickup: Tomorrow 10:00 AM")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /reserve & checkout/i }))
+
+    expect(screen.getByRole("heading", { name: /checkout/i })).toBeInTheDocument()
+    expect(screen.getByText("Tomorrow 10:00 AM")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm reservation/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("screen")).toHaveTextContent("buyer-pickup-qr")
+    })
+
+    const orderCall = fetchMock.mock.calls.find(([path]) => fetchCallPath(path) === "/api/orders")
+    const orderInit = orderCall?.[1] as RequestInit
+    const orderBody = JSON.parse(String(orderInit.body)) as {
+      pickupDate: string
+      pickupTime: string
+    }
+
+    expect(orderBody.pickupTime).toBe("10:00 AM")
+    expect(Number.isNaN(new Date(orderBody.pickupDate).getTime())).toBe(false)
+    expect(screen.getByTestId("selected-order-pickup-time")).toHaveTextContent("10:00 AM")
+    expect(screen.getAllByText(/10:00 AM/).length).toBeGreaterThan(0)
   })
 
   it("shows a visible checkout error when the order API fails", async () => {
@@ -623,11 +693,11 @@ describe("rendered remaining buyer flows", () => {
       expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
     })
     expect(screen.getByText(/SQL Tender Juicy Hotdog/)).toBeInTheDocument()
-    expect(screen.getByText(/ORD-SQL-READY/)).toBeInTheDocument()
+    expect(screen.getAllByText(/ORD-SQL-READY/).length).toBeGreaterThan(0)
     expect(screen.getByLabelText(/qr code for pickup code \*\*\*\*7x29/i)).toBeInTheDocument()
   })
 
-  it("renders selected SQL-backed order details in the pickup QR screen", () => {
+  it("renders selected SQL-backed order details in the pickup QR screen", async () => {
     const order: Order = {
       id: "ORD-SELECTED-QR",
       buyer: "Test Buyer",
@@ -638,6 +708,7 @@ describe("rendered remaining buyer flows", () => {
       pickupDate: "2030-06-03",
       pickupTime: "4:00 PM",
       pickupCode: "F4A-SQL1",
+      pickupLocation: "Selected SQL Pickup Counter",
     }
 
     renderWithAppState(
@@ -648,13 +719,16 @@ describe("rendered remaining buyer flows", () => {
       </>,
     )
 
-    expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("selected-role")).toHaveTextContent("buyer")
+      expect(screen.getByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    })
     expect(screen.getByLabelText(/qr code for pickup code f4a-sql1/i)).toBeInTheDocument()
     expect(screen.getByText("Pickup Code")).toBeInTheDocument()
-    expect(screen.getByText(/ORD-SELECTED-QR/)).toBeInTheDocument()
+    expect(screen.getAllByText(/ORD-SELECTED-QR/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Selected SQL Pickup Bundle/)).toBeInTheDocument()
     expect(screen.getByText(/2030-06-03.*4:00 PM/)).toBeInTheDocument()
-    expect(screen.getByText("Pickup location unavailable")).toBeInTheDocument()
+    expect(screen.getByText("Selected SQL Pickup Counter")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /share pickup qr/i })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /claim pickup/i }))
@@ -666,6 +740,92 @@ describe("rendered remaining buyer flows", () => {
     fireEvent.click(screen.getByRole("button", { name: /view all orders/i }))
 
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-orders")
+  })
+
+  it("fetches pickup order detail when only selected order id is available", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const detailOrder: ApiOrder = {
+      ...READY_API_ORDER,
+      id: "ORD-DEEP-LINK",
+      pickupTime: "5:15 PM",
+      pickupCode: "F4A-DEEP",
+      pickupLocation: "Deep Link Pickup Counter",
+    }
+    let resolveDetail!: (response: Response) => void
+    const detailResponse = new Promise<Response>((resolve) => {
+      resolveDetail = resolve
+    })
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders/ORD-DEEP-LINK") {
+        return detailResponse
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(
+      <BuyerPickupQRScreen />,
+      <SeedSelectedOrderId orderId="ORD-DEEP-LINK" />,
+    )
+
+    expect(await screen.findByText("Loading pickup details...")).toBeInTheDocument()
+
+    resolveDetail(apiSuccessResponse<{ order: ApiOrder }>({ order: detailOrder }))
+
+    expect(await screen.findByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    expect(screen.getAllByText(/ORD-DEEP-LINK/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/5:15 PM/).length).toBeGreaterThan(0)
+    expect(screen.getByText("Deep Link Pickup Counter")).toBeInTheDocument()
+    expect(screen.getByLabelText(/qr code for pickup code f4a-deep/i)).toBeInTheDocument()
+    expect(screen.getByTestId("selected-order-id")).toHaveTextContent("ORD-DEEP-LINK")
+    expect(screen.getByTestId("selected-order-pickup-time")).toHaveTextContent("5:15 PM")
+    expect(fetchMock.mock.calls.map(([path]) => fetchCallPath(path))).toContain("/api/orders/ORD-DEEP-LINK")
+  })
+
+  it("shows pickup detail errors and retries by selected order id", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const detailOrder: ApiOrder = {
+      ...READY_API_ORDER,
+      id: "ORD-RETRY",
+      pickupLocation: "Retry Pickup Counter",
+    }
+    let detailReads = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const url = new URL(requestUrl, "http://localhost")
+
+      if (url.pathname === "/api/orders/ORD-RETRY") {
+        detailReads += 1
+
+        return Promise.resolve(
+          detailReads === 1
+            ? apiErrorResponse("SERVER_ERROR", "Pickup detail is unavailable.", 500)
+            : apiSuccessResponse<{ order: ApiOrder }>({ order: detailOrder }),
+        )
+      }
+
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(
+      <BuyerPickupQRScreen />,
+      <SeedSelectedOrderId orderId="ORD-RETRY" />,
+    )
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Pickup detail is unavailable.")
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+
+    expect(await screen.findByRole("heading", { name: /show qr at store/i })).toBeInTheDocument()
+    expect(screen.getByText("Retry Pickup Counter")).toBeInTheDocument()
+    expect(detailReads).toBeGreaterThanOrEqual(2)
   })
 
   it("shows a safe pickup fallback when no order is selected", () => {
@@ -775,13 +935,14 @@ describe("rendered seller marketplace flow", () => {
     expect(screen.queryByRole("heading", { name: /edit product/i })).not.toBeInTheDocument()
     expect(screen.getByText("Task 021 Updated Hotdog")).toBeInTheDocument()
     expect(screen.getByText("9 left")).toBeInTheDocument()
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+    expect(fetchMock.mock.calls.map(([path]) => fetchCallPath(path)).filter((path) => path.startsWith("/api/seller/products"))).toEqual([
       "/api/seller/products",
       "/api/seller/products/p1",
       "/api/seller/products",
     ])
 
-    const patchInit = fetchMock.mock.calls[1]?.[1] as RequestInit
+    const patchCall = fetchMock.mock.calls.find(([path]) => fetchCallPath(path) === "/api/seller/products/p1")
+    const patchInit = patchCall?.[1] as RequestInit
 
     expect(patchInit.method).toBe("PATCH")
     expect(JSON.parse(String(patchInit.body))).toMatchObject({
@@ -1076,13 +1237,23 @@ describe("rendered remaining seller mock flows", () => {
   })
 
   it("shows a visible seller add-product API failure", async () => {
+    const baseFetch = installMarketplaceFetchMock()
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
-          brand: "Brand is required.",
-        }),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const requestUrl =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+        const url = new URL(requestUrl, "http://localhost")
+        const method = input instanceof Request ? input.method : init?.method
+
+        if (url.pathname === "/api/seller/products" && method === "POST") {
+          return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+            brand: "Brand is required.",
+          })
+        }
+
+        return baseFetch(input, init)
+      }),
     )
     renderWithAppState(<SellerAddProductScreen />, <SeedRole role="seller" />)
 
@@ -1364,7 +1535,7 @@ describe("rendered remaining seller mock flows", () => {
       expect(screen.queryByText("Chicken Nuggets Supreme")).not.toBeInTheDocument()
     })
     expect(screen.getByRole("status")).toHaveTextContent("Chicken Nuggets Supreme was deleted.")
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+    expect(fetchMock.mock.calls.map(([path]) => fetchCallPath(path)).filter((path) => path.startsWith("/api/seller/products"))).toEqual([
       "/api/seller/products",
       "/api/seller/products/p3",
       "/api/seller/products",

@@ -24,13 +24,18 @@ import {
   writeLocalStorageValue,
 } from "@/lib/local-storage"
 import {
-  createLoginTransition,
   createLogoutTransition,
-  createRegisterTransition,
   createRoleSelectionTransition,
   getAuthStatus,
   isAuthenticated as getIsAuthenticated,
 } from "@/lib/local-auth-flow"
+import {
+  getCurrentUser as getCurrentUserService,
+  login as loginService,
+  logout as logoutService,
+  register as registerService,
+  setCurrentUserRole,
+} from "@/lib/services/auth-service"
 import {
   addToCart as addToCartService,
   clearCart as clearCartService,
@@ -43,6 +48,11 @@ export type { AuthRole, AuthStatus, AuthUser, CartItem, UserRole }
 export type { Screen }
 export type LoginPayload = LoginInput
 export type RegisterPayload = RegisterInput
+export interface PickupSlotSelection {
+  label: string
+  pickupDate: string
+  pickupTime: string
+}
 
 interface AppState {
   screen: Screen
@@ -54,10 +64,12 @@ interface AppState {
   cartItems: CartItem[]
   selectedProductId: string | null
   selectedOrder: Order | null
+  selectedOrderId: string | null
+  selectedPickupSlot: PickupSlotSelection
   navigate: (screen: Screen) => void
-  login: (payload: LoginPayload) => void
-  register: (payload: RegisterPayload) => void
-  logout: () => void
+  login: (payload: LoginPayload) => Promise<void>
+  register: (payload: RegisterPayload) => Promise<void>
+  logout: () => Promise<void>
   selectRole: (role: AuthRole) => Promise<void>
   addToCart: (item: CartItem) => void
   updateCartQuantity: (id: string, quantity: number) => void
@@ -67,6 +79,8 @@ interface AppState {
   clearCart: () => void
   selectProduct: (id: string) => void
   selectOrder: (order: Order | null) => void
+  selectOrderId: (orderId: string | null) => void
+  selectPickupSlot: (slot: PickupSlotSelection) => void
   cartCount: number
   cartTotal: number
 }
@@ -147,6 +161,28 @@ function persistCartItems(cartItems: CartItem[]) {
   }
 }
 
+function screenForAuthenticatedUser(user: AuthUser) {
+  return user.role ? defaultScreenForRole(user.role) : "role-select"
+}
+
+export function createPickupSlotSelection(
+  label: string = "Today 2:00 PM",
+  pickupTime: string = "2:00 PM",
+  dayOffset = 0,
+  referenceDate = new Date(),
+): PickupSlotSelection {
+  const pickupDate = new Date(referenceDate)
+
+  pickupDate.setDate(referenceDate.getDate() + dayOffset)
+  pickupDate.setHours(0, 0, 0, 0)
+
+  return {
+    label,
+    pickupDate: pickupDate.toISOString(),
+    pickupTime,
+  }
+}
+
 function addLocalCartItem(cartItems: CartItem[], item: CartItem) {
   const existing = cartItems.find((cartItem) => cartItem.id === item.id)
 
@@ -183,11 +219,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>(MOCK_CART)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [selectedPickupSlot, setSelectedPickupSlot] = useState<PickupSlotSelection>(() =>
+    createPickupSlotSelection(),
+  )
   const skipStorageHydrationRef = useRef(false)
   const cartTouchedRef = useRef(false)
+  const currentUserRef = useRef<AuthUser | null>(currentUser)
+  const selectedRoleRef = useRef<UserRole>(selectedRole)
 
   const authStatus: AuthStatus = getAuthStatus(currentUser)
   const isAuthenticated = getIsAuthenticated(currentUser)
+
+  useEffect(() => {
+    currentUserRef.current = currentUser
+    selectedRoleRef.current = selectedRole
+  }, [currentUser, selectedRole])
 
   useEffect(() => {
     const storedUser = readLocalStorageValue(LOCAL_STORAGE_KEYS.authUser, isAuthUser)
@@ -195,17 +242,45 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const storedCartItems = readLocalStorageValue(LOCAL_STORAGE_KEYS.cartItems, isCartItems)
     let isMounted = true
 
-    queueMicrotask(() => {
+    async function hydrateAuthState() {
       if (!isMounted || skipStorageHydrationRef.current) return
 
-      if (storedUser) {
-        const nextRole = storedRole ?? storedUser.role
-        const nextUser = { ...storedUser, role: nextRole }
+      let hydratedUser: AuthUser | null = null
 
-        setCurrentUser(nextUser)
-        setSelectedRole(nextRole)
-        setScreen(nextRole ? defaultScreenForRole(nextRole) : "role-select")
+      try {
+        hydratedUser = await getCurrentUserService()
+      } catch {
+        hydratedUser = null
       }
+
+      if (!isMounted || skipStorageHydrationRef.current) return
+
+      if (hydratedUser) {
+        setCurrentUser((current) => current ?? hydratedUser)
+        setSelectedRole((current) => current ?? hydratedUser.role)
+        setScreen((currentScreen) =>
+          currentScreen === "splash" ? screenForAuthenticatedUser(hydratedUser) : currentScreen,
+        )
+        persistAuthState(hydratedUser, hydratedUser.role)
+        return
+      }
+
+      if (storedUser) {
+        setCurrentUser((current) => {
+          if (current) return current
+
+          const nextRole = storedRole ?? storedUser.role
+          const nextUser = { ...storedUser, role: nextRole }
+
+          setSelectedRole(nextRole)
+          setScreen(nextRole ? defaultScreenForRole(nextRole) : "role-select")
+          return nextUser
+        })
+      }
+    }
+
+    queueMicrotask(() => {
+      void hydrateAuthState()
 
       if (storedCartItems) {
         setCartItems(storedCartItems)
@@ -243,51 +318,65 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser, selectedRole])
 
   const navigate = useCallback((s: Screen) => {
-    setScreen(resolveNavigationTarget(s, { currentUser, selectedRole }))
-  }, [currentUser, selectedRole])
-
-  const login = useCallback((payload: LoginPayload) => {
-    skipStorageHydrationRef.current = true
-    const nextState = createLoginTransition(payload)
-
-    setCurrentUser(nextState.currentUser)
-    setSelectedRole(nextState.selectedRole)
-    setSelectedProductId(nextState.selectedProductId)
-    setSelectedOrder(null)
-    setScreen(nextState.screen)
-    persistAuthState(nextState.currentUser, nextState.selectedRole)
+    setScreen(resolveNavigationTarget(s, {
+      currentUser: currentUserRef.current,
+      selectedRole: selectedRoleRef.current,
+    }))
   }, [])
 
-  const register = useCallback((payload: RegisterPayload) => {
+  const login = useCallback(async (payload: LoginPayload) => {
     skipStorageHydrationRef.current = true
-    const nextState = createRegisterTransition(payload)
+    const authenticatedUser = await loginService(payload)
 
-    setCurrentUser(nextState.currentUser)
-    setSelectedRole(nextState.selectedRole)
-    setSelectedProductId(nextState.selectedProductId)
+    setCurrentUser(authenticatedUser)
+    setSelectedRole(authenticatedUser.role)
+    setSelectedProductId(null)
     setSelectedOrder(null)
-    setScreen(nextState.screen)
-    persistAuthState(nextState.currentUser, nextState.selectedRole)
+    setSelectedOrderId(null)
+    setScreen(screenForAuthenticatedUser(authenticatedUser))
+    persistAuthState(authenticatedUser, authenticatedUser.role)
   }, [])
 
-  const logout = useCallback(() => {
+  const register = useCallback(async (payload: RegisterPayload) => {
     skipStorageHydrationRef.current = true
+    const authenticatedUser = await registerService(payload)
+
+    setCurrentUser(authenticatedUser)
+    setSelectedRole(authenticatedUser.role)
+    setSelectedProductId(null)
+    setSelectedOrder(null)
+    setSelectedOrderId(null)
+    setScreen(screenForAuthenticatedUser(authenticatedUser))
+    persistAuthState(authenticatedUser, authenticatedUser.role)
+  }, [])
+
+  const logout = useCallback(async () => {
+    skipStorageHydrationRef.current = true
+
+    if (currentUser) {
+      void logoutService().catch(() => {
+        // Local logout should still clear UI state if the session revoke request fails.
+      })
+    }
+
     const nextState = createLogoutTransition()
 
     setCurrentUser(nextState.currentUser)
     setSelectedRole(nextState.selectedRole)
     setSelectedProductId(nextState.selectedProductId)
     setSelectedOrder(null)
+    setSelectedOrderId(null)
+    setSelectedPickupSlot(createPickupSlotSelection())
     setCartItems(nextState.cartItems)
     setScreen(nextState.screen)
     clearLocalStorageValues(SESSION_STORAGE_KEYS)
-  }, [])
+  }, [currentUser])
 
   const selectRole = useCallback(async (role: AuthRole) => {
     skipStorageHydrationRef.current = true
 
     if (currentUser && !currentUser.id.startsWith("mock-")) {
-      const updatedUser = await import("@/lib/services/auth-service").then((m) => m.setCurrentUserRole(role))
+      const updatedUser = await setCurrentUserRole(role)
       if (!updatedUser) throw new Error("Failed to update role.")
       
       const nextState = createRoleSelectionTransition(updatedUser, role)
@@ -298,6 +387,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Test/fallback-only path for legacy local-auth-flow mock users.
     const nextState = createRoleSelectionTransition(currentUser, role)
 
     setSelectedRole(nextState.selectedRole)
@@ -314,6 +404,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const selectOrder = useCallback((order: Order | null) => {
     skipStorageHydrationRef.current = true
     setSelectedOrder(order)
+    setSelectedOrderId(order?.id ?? null)
+  }, [])
+
+  const selectOrderId = useCallback((orderId: string | null) => {
+    skipStorageHydrationRef.current = true
+    setSelectedOrderId(orderId)
+    setSelectedOrder((current) => (current?.id === orderId ? current : null))
+  }, [])
+
+  const selectPickupSlot = useCallback((slot: PickupSlotSelection) => {
+    skipStorageHydrationRef.current = true
+    setSelectedPickupSlot(slot)
   }, [])
 
   const addToCart = useCallback((item: CartItem) => {
@@ -479,6 +581,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         cartItems,
         selectedProductId,
         selectedOrder,
+        selectedOrderId,
+        selectedPickupSlot,
         navigate,
         login,
         register,
@@ -492,6 +596,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         selectProduct,
         selectOrder,
+        selectOrderId,
+        selectPickupSlot,
         cartCount,
         cartTotal,
       }}

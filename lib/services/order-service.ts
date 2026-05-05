@@ -20,6 +20,7 @@ function toOrder(apiOrder: ApiOrder): Order {
     pickupDate: apiOrder.pickupDate,
     pickupTime: apiOrder.pickupTime,
     pickupCode: apiOrder.pickupCode,
+    pickupLocation: apiOrder.pickupLocation,
   }
 }
 
@@ -45,6 +46,12 @@ export async function getBuyerOrders(): Promise<Order[]> {
   const result = await apiRequest<{ orders: ApiOrder[] }>("/api/orders")
 
   return result.orders.map(toOrder)
+}
+
+export async function getBuyerOrderById(orderId: string): Promise<Order> {
+  const result = await apiRequest<{ order: ApiOrder }>(`/api/orders/${encodeURIComponent(orderId)}`)
+
+  return toOrder(result.order)
 }
 
 export async function getSellerOrders(): Promise<Order[]> {

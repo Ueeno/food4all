@@ -92,6 +92,7 @@ export interface Order {
   pickupDate: string
   pickupTime: string
   pickupCode: string
+  pickupLocation?: string
 }
 
 export interface PickupCode {

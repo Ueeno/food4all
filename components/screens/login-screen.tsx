@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useAppState } from "@/lib/app-state"
+import { isApiClientError } from "@/lib/api-client"
 import { validateLoginInput, type LoginValidationErrors } from "@/lib/auth-validation"
 import { AppButton, AppTextField } from "@/components/food4all"
 import { Eye, EyeOff, Mail, Lock } from "lucide-react"
@@ -26,6 +27,7 @@ export function LoginScreen() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [errors, setErrors] = useState<LoginValidationErrors>({})
+  const [actionError, setActionError] = useState("")
 
   const clearError = (field: keyof LoginValidationErrors) =>
     setErrors((current) => ({ ...current, [field]: undefined }))
@@ -37,14 +39,23 @@ export function LoginScreen() {
     return result.isValid
   }
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!validateLogin()) return
 
     setLoading(true)
-    setTimeout(() => {
+    setActionError("")
+
+    try {
+      await login({ email: email.trim(), password })
+    } catch (error) {
+      if (isApiClientError(error) && error.fieldErrors) {
+        setErrors(error.fieldErrors)
+      }
+
+      setActionError(error instanceof Error ? error.message : "Unable to sign in.")
+    } finally {
       setLoading(false)
-      login({ email: email.trim(), password })
-    }, 1200)
+    }
   }
 
   return (
@@ -85,6 +96,7 @@ export function LoginScreen() {
               onChange={(e) => {
                 setEmail(e.target.value)
                 clearError("email")
+                setActionError("")
               }}
               placeholder="you@email.com"
               error={errors.email}
@@ -99,6 +111,7 @@ export function LoginScreen() {
               onChange={(e) => {
                 setPassword(e.target.value)
                 clearError("password")
+                setActionError("")
               }}
               placeholder="Password"
               className="mb-2"
@@ -117,6 +130,12 @@ export function LoginScreen() {
             <button className="text-xs font-semibold text-primary hover:underline mb-5 block">
               Forgot password?
             </button>
+
+            {actionError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-4" role="alert">
+                <p className="text-sm text-red-500 text-center">{actionError}</p>
+              </div>
+            )}
 
             <AppButton
               variant="primary"

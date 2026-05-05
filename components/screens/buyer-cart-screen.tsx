@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useState } from "react"
-import { useAppState } from "@/lib/app-state"
+import { createPickupSlotSelection, useAppState } from "@/lib/app-state"
 import { BottomNav } from "@/components/bottom-nav"
 import { AppButton, EmptyStateWidget } from "@/components/food4all"
 import { createOrder } from "@/lib/services/order-service"
@@ -20,17 +20,30 @@ import {
   CheckCircle2,
 } from "lucide-react"
 
+const PICKUP_TIME_OPTIONS = [
+  { label: "Today 2:00 PM", pickupTime: "2:00 PM", dayOffset: 0 },
+  { label: "Today 4:00 PM", pickupTime: "4:00 PM", dayOffset: 0 },
+  { label: "Tomorrow 10:00 AM", pickupTime: "10:00 AM", dayOffset: 1 },
+  { label: "Tomorrow 2:00 PM", pickupTime: "2:00 PM", dayOffset: 1 },
+]
+
 // ─── Cart Screen ───────────────────────────────────────────────
 export function BuyerCartScreen() {
-  const { cartItems, decrementCartItem, incrementCartItem, removeFromCart, cartTotal, navigate } = useAppState()
-  const [selectedPickup, setSelectedPickup] = useState(0)
+  const {
+    cartItems,
+    decrementCartItem,
+    incrementCartItem,
+    removeFromCart,
+    cartTotal,
+    navigate,
+    selectedPickupSlot,
+    selectPickupSlot,
+  } = useAppState()
 
   const savings = cartItems.reduce(
     (sum, item) => sum + (item.originalPrice - item.price) * item.quantity,
     0
   )
-
-  const pickupTimes = ["Today 2:00 PM", "Today 4:00 PM", "Tomorrow 10:00 AM", "Tomorrow 2:00 PM"]
 
   if (cartItems.length === 0) {
     return (
@@ -168,17 +181,21 @@ export function BuyerCartScreen() {
             Schedule Pickup
           </h4>
           <div className="grid grid-cols-2 gap-2">
-            {pickupTimes.map((time, i) => (
+            {PICKUP_TIME_OPTIONS.map((option) => (
               <button
-                key={time}
-                onClick={() => setSelectedPickup(i)}
+                key={option.label}
+                onClick={() =>
+                  selectPickupSlot(
+                    createPickupSlotSelection(option.label, option.pickupTime, option.dayOffset),
+                  )
+                }
                 className={`text-xs font-semibold py-2.5 px-3 rounded-xl transition-all ${
-                  selectedPickup === i
+                  selectedPickupSlot.label === option.label
                     ? "sky-gradient text-white shadow-md shadow-primary/20"
                     : "glass-card text-foreground/65 hover:bg-muted border border-border"
                 }`}
               >
-                {time}
+                {option.label}
               </button>
             ))}
           </div>
@@ -212,7 +229,7 @@ export function BuyerCartScreen() {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-muted-foreground">Pickup: {pickupTimes[selectedPickup]}</p>
+            <p className="text-[10px] text-muted-foreground">Pickup: {selectedPickupSlot.label}</p>
           </div>
         </div>
 
@@ -233,7 +250,7 @@ export function BuyerCartScreen() {
 
 // ─── Checkout Screen ───────────────────────────────────────────
 export function BuyerCheckoutScreen() {
-  const { cartItems, cartTotal, clearCart, navigate, selectOrder } = useAppState()
+  const { cartItems, cartTotal, clearCart, navigate, selectOrder, selectedPickupSlot } = useAppState()
   const [loading, setLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
@@ -249,8 +266,8 @@ export function BuyerCheckoutScreen() {
     try {
       const order = await createOrder({
         items: cartItems,
-        pickupDate: new Date().toISOString(),
-        pickupTime: "2:00 PM",
+        pickupDate: selectedPickupSlot.pickupDate,
+        pickupTime: selectedPickupSlot.pickupTime,
       })
       selectOrder(order)
       clearCart()
@@ -335,7 +352,9 @@ export function BuyerCheckoutScreen() {
               <p className="text-[11px] text-muted-foreground">{item.location}</p>
               <div className="flex items-center gap-1.5 mt-2">
                 <Clock className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-                <span className="text-xs font-semibold text-foreground">Today, 2:00 PM</span>
+                <span className="text-xs font-semibold text-foreground">
+                  {selectedPickupSlot.label}
+                </span>
               </div>
             </div>
           ))}

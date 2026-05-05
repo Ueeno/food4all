@@ -13,6 +13,7 @@ import {
   GET as getOrders,
   POST as createOrder,
 } from "@/app/api/orders/route"
+import { GET as getOrderById } from "@/app/api/orders/[id]/route"
 import { GET as getSellerOrdersRoute } from "@/app/api/seller/orders/route"
 import { PATCH as updateSellerOrderStatus } from "@/app/api/seller/orders/[id]/status/route"
 import {
@@ -95,6 +96,12 @@ async function loginAs(email: string) {
 }
 
 function sellerProductContext(id: string) {
+  return {
+    params: Promise.resolve({ id }),
+  }
+}
+
+function orderContext(id: string) {
   return {
     params: Promise.resolve({ id }),
   }
@@ -1126,6 +1133,53 @@ describe("backend route handlers", () => {
     })
   })
 
+  it("POST /api/orders persists selected pickup date and time into the created order DTO and history", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const selectedPickupDate = "2030-06-04T00:00:00.000Z"
+    const selectedPickupTime = "4:30 PM"
+
+    await addCartItem(
+      jsonRequest("/api/cart/items", { productId: "test-product-active", quantity: 1 }, buyerCookie),
+    )
+
+    const createResponse = await createOrder(
+      jsonRequest(
+        "/api/orders",
+        { pickupDate: selectedPickupDate, pickupTime: selectedPickupTime },
+        buyerCookie,
+      ),
+    )
+    const createBody = await responseJson(createResponse)
+    const createdOrder = (createBody.data as { order: { id: string; pickupDate: string; pickupTime: string } }).order
+    const storedOrder = await getPrisma().order.findUnique({
+      where: {
+        id: createdOrder.id,
+      },
+    })
+    const listResponse = await getOrders(getRequest("/api/orders", buyerCookie))
+    const listBody = await responseJson(listResponse)
+
+    expect(createResponse.status).toBe(201)
+    expect(createdOrder).toMatchObject({
+      pickupDate: selectedPickupDate,
+      pickupTime: selectedPickupTime,
+    })
+    expect(storedOrder?.pickupDate.toISOString()).toBe(selectedPickupDate)
+    expect(storedOrder?.pickupTime).toBe(selectedPickupTime)
+    expect(listBody).toMatchObject({
+      ok: true,
+      data: {
+        orders: [
+          expect.objectContaining({
+            id: createdOrder.id,
+            pickupDate: selectedPickupDate,
+            pickupTime: selectedPickupTime,
+          }),
+        ],
+      },
+    })
+  })
+
   it("POST /api/orders clears the cart after checkout", async () => {
     const buyerCookie = await loginAs("buyer@example.test")
 
@@ -1213,6 +1267,124 @@ describe("backend route handlers", () => {
     await expect(responseJson(response)).resolves.toMatchObject({
       ok: true,
       data: { orders: [] },
+    })
+  })
+
+  it("GET /api/orders/[id] returns 401 when unauthenticated", async () => {
+    const response = await getOrderById(
+      getRequest("/api/orders/missing-order"),
+      orderContext("missing-order"),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    })
+  })
+
+  it("GET /api/orders/[id] returns 403 for seller users", async () => {
+    const sellerCookie = await loginAs("seller@example.test")
+    const response = await getOrderById(
+      getRequest("/api/orders/missing-order", sellerCookie),
+      orderContext("missing-order"),
+    )
+
+    expect(response.status).toBe(403)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    })
+  })
+
+  it("GET /api/orders/[id] returns a buyer's own order detail with pickup data", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const selectedPickupDate = "2030-06-05T00:00:00.000Z"
+    const selectedPickupTime = "6:30 PM"
+
+    await addCartItem(
+      jsonRequest("/api/cart/items", { productId: "test-product-active", quantity: 1 }, buyerCookie),
+    )
+    const createResponse = await createOrder(
+      jsonRequest(
+        "/api/orders",
+        { pickupDate: selectedPickupDate, pickupTime: selectedPickupTime },
+        buyerCookie,
+      ),
+    )
+    const createBody = await responseJson(createResponse)
+    const orderId = (createBody.data as { order: { id: string } }).order.id
+
+    const response = await getOrderById(
+      getRequest(`/api/orders/${orderId}`, buyerCookie),
+      orderContext(orderId),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        order: expect.objectContaining({
+          id: orderId,
+          buyerId: "test-buyer-user",
+          pickupDate: selectedPickupDate,
+          pickupTime: selectedPickupTime,
+          pickupLocation: "Magsaysay Market, Davao City",
+          items: [
+            expect.objectContaining({
+              productName: "Integration Tender Juicy Hotdog",
+            }),
+          ],
+        }),
+      },
+    })
+  })
+
+  it("GET /api/orders/[id] hides another buyer's order", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+
+    await addCartItem(
+      jsonRequest("/api/cart/items", { productId: "test-product-active", quantity: 1 }, buyerCookie),
+    )
+    const createResponse = await createOrder(
+      jsonRequest("/api/orders", { pickupDate: "2030-06-01", pickupTime: "2:00 PM" }, buyerCookie),
+    )
+    const createBody = await responseJson(createResponse)
+    const orderId = (createBody.data as { order: { id: string } }).order.id
+    const otherBuyerResponse = await register(
+      jsonRequest("/api/auth/register", {
+        firstName: "Other",
+        lastName: "Buyer",
+        email: "other.buyer@example.test",
+        password: TEST_PASSWORD,
+        role: "buyer",
+      }),
+    )
+    const otherBuyerCookie = getSessionCookie(otherBuyerResponse)
+
+    const response = await getOrderById(
+      getRequest(`/api/orders/${orderId}`, otherBuyerCookie),
+      orderContext(orderId),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "NOT_FOUND" },
+    })
+  })
+
+  it("GET /api/orders/[id] returns 404 for a missing buyer order", async () => {
+    const buyerCookie = await loginAs("buyer@example.test")
+    const response = await getOrderById(
+      getRequest("/api/orders/missing-order", buyerCookie),
+      orderContext("missing-order"),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(responseJson(response)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "NOT_FOUND" },
     })
   })
 

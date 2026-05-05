@@ -49,6 +49,7 @@ export type ApiEndpoint =
   | "/api/cart/items"
   | "/api/cart/items/:productId"
   | "/api/orders"
+  | "/api/orders/:id"
   | "/api/seller/orders"
   | "/api/seller/orders/:id/status"
   | "/api/pickup/verify"

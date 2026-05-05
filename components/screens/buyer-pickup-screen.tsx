@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useAppState } from "@/lib/app-state"
-import { getBuyerOrders } from "@/lib/services/order-service"
+import { getBuyerOrderById, getBuyerOrders } from "@/lib/services/order-service"
 import type { Order } from "@/lib/types"
 import { BottomNav } from "@/components/bottom-nav"
 import { EmptyStateWidget, LoadingView } from "@/components/food4all"
@@ -28,13 +28,79 @@ import {
 
 // ─── QR Pickup Confirmation Screen ─────────────────────────────
 export function BuyerPickupQRScreen() {
-  const { navigate, selectedOrder } = useAppState()
+  const { navigate, selectedOrder, selectedOrderId, selectOrder } = useAppState()
   const [claimed, setClaimed] = useState(false)
+  const [fetchedOrder, setFetchedOrder] = useState<Order | null>(null)
+  const [loadingOrder, setLoadingOrder] = useState(false)
+  const [orderError, setOrderError] = useState<string | null>(null)
 
-  const pickupCode = selectedOrder?.pickupCode?.trim() ?? ""
+  const displayOrder = selectedOrder ?? fetchedOrder
+  const pickupCode = displayOrder?.pickupCode?.trim() ?? ""
   const pickupCodeLabel = pickupCode || "Pickup code unavailable"
 
-  if (!selectedOrder) {
+  const loadOrderDetail = useCallback(async () => {
+    if (!selectedOrderId) return
+
+    setLoadingOrder(true)
+    setOrderError(null)
+
+    try {
+      const order = await getBuyerOrderById(selectedOrderId)
+
+      setFetchedOrder(order)
+      selectOrder(order)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load pickup details."
+
+      setOrderError(message)
+    } finally {
+      setLoadingOrder(false)
+    }
+  }, [selectOrder, selectedOrderId])
+
+  useEffect(() => {
+    if (selectedOrder || !selectedOrderId) return
+
+    queueMicrotask(() => {
+      void loadOrderDetail()
+    })
+  }, [loadOrderDetail, selectedOrder, selectedOrderId])
+
+  if (!displayOrder && selectedOrderId && loadingOrder) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="sky-gradient-deep pt-12 pb-6 px-5 shrink-0">
+          <h1 className="text-white font-black text-2xl">Pickup QR</h1>
+          <p className="text-white/65 text-xs mt-0.5">Loading pickup details</p>
+        </div>
+        <LoadingView label="Loading pickup details..." className="flex-1" />
+        <BottomNav />
+      </div>
+    )
+  }
+
+  if (!displayOrder && selectedOrderId && orderError) {
+    return (
+      <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
+        <div className="sky-gradient-deep pt-12 pb-6 px-5 shrink-0">
+          <h1 className="text-white font-black text-2xl">Pickup QR</h1>
+          <p className="text-white/65 text-xs mt-0.5">Pickup details could not load</p>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
+          <div role="alert" className="text-sm text-danger font-semibold text-center">
+            {orderError}
+          </div>
+          <GlassButton variant="primary" size="md" onClick={() => void loadOrderDetail()}>
+            Try Again
+          </GlassButton>
+        </div>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  if (!displayOrder) {
     return (
       <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
         <div className="sky-gradient-deep pt-12 pb-6 px-5 shrink-0">
@@ -73,18 +139,18 @@ export function BuyerPickupQRScreen() {
               <CheckCircle2 className="w-10 h-10" style={{ color: "var(--success)" }} />
             </div>
             <h1 className="text-2xl font-black text-foreground mb-2">Pickup Complete!</h1>
-            <p className="text-muted-foreground text-sm mb-1">Order {selectedOrder.id} has been claimed.</p>
+            <p className="text-muted-foreground text-sm mb-1">Order {displayOrder.id} has been claimed.</p>
             <p className="text-xs text-muted-foreground mb-6">
               Thank you for choosing near-expiry food. You helped reduce waste!
             </p>
             <div className="glass rounded-2xl p-4 mb-5 text-left space-y-2">
               <div className="flex justify-between">
                 <span className="text-xs text-muted-foreground">Product</span>
-                <span className="text-xs font-semibold text-foreground line-clamp-1 max-w-[55%] text-right">{selectedOrder.product}</span>
+                <span className="text-xs font-semibold text-foreground line-clamp-1 max-w-[55%] text-right">{displayOrder.product}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-muted-foreground">Total Paid</span>
-                <span className="text-sm font-black text-primary">₱{selectedOrder.total}</span>
+                <span className="text-sm font-black text-primary">₱{displayOrder.total}</span>
               </div>
             </div>
             <GlassButton variant="primary" size="lg" fullWidth onClick={() => navigate("buyer-orders")}>
@@ -191,17 +257,17 @@ export function BuyerPickupQRScreen() {
               {
                 icon: <Package className="w-4 h-4 text-white" />,
                 label: "Order",
-                value: `${selectedOrder.id} · ${selectedOrder.product} · Qty ${selectedOrder.quantity} · ₱${selectedOrder.total}`,
+                value: `${displayOrder.id} · ${displayOrder.product} · Qty ${displayOrder.quantity} · ₱${displayOrder.total}`,
               },
               {
                 icon: <Clock className="w-4 h-4 text-white" />,
                 label: "Pickup Window",
-                value: `${selectedOrder.pickupDate} · ${selectedOrder.pickupTime}`,
+                value: `${displayOrder.pickupDate} · ${displayOrder.pickupTime}`,
               },
               {
                 icon: <MapPin className="w-4 h-4 text-white" />,
                 label: "Pickup Location",
-                value: "Pickup location unavailable",
+                value: displayOrder.pickupLocation ?? "Pickup location unavailable",
               },
             ].map(({ icon, label, value }) => (
               <div key={label} className="flex items-start gap-3 bg-muted/60 rounded-2xl p-3">

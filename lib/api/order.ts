@@ -76,6 +76,10 @@ type DbOrderItem = {
   unitPriceCents: number
   originalUnitPriceCents: number
   subtotalCents: number
+  product?: {
+    pickupAddress: string
+    pickupBarangay: string | null
+  } | null
 }
 
 type DbOrder = {
@@ -94,6 +98,10 @@ type DbOrder = {
   buyer: {
     name: string
   }
+  seller?: {
+    address: string
+    barangay: string | null
+  }
   pickupCode: {
     displayCodeLast4: string | null
   } | null
@@ -110,6 +118,13 @@ export function mapApiOrderItem(item: DbOrderItem): ApiOrderItem {
     originalUnitPrice: centsToPesos(item.originalUnitPriceCents),
     subtotal: centsToPesos(item.subtotalCents),
   }
+}
+
+function getPickupLocation(order: DbOrder): string | undefined {
+  const productPickupAddress = order.items.find((item) => item.product?.pickupAddress)?.product?.pickupAddress
+  const pickupAddress = productPickupAddress ?? order.seller?.address
+
+  return pickupAddress || undefined
 }
 
 export function mapApiOrder(order: DbOrder, pickupCodePlaintext?: string): ApiOrder {
@@ -132,6 +147,7 @@ export function mapApiOrder(order: DbOrder, pickupCodePlaintext?: string): ApiOr
     pickupDate: order.pickupDate.toISOString(),
     pickupTime: order.pickupTime,
     pickupCode: pickupCodePlaintext ?? (order.pickupCode?.displayCodeLast4 ? `****${order.pickupCode.displayCodeLast4}` : ""),
+    pickupLocation: getPickupLocation(order),
     items,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
@@ -153,6 +169,18 @@ export async function getOrdersForBuyer(buyerId: string) {
     orderBy: {
       createdAt: "desc",
     },
+  })
+}
+
+export async function getOrderForBuyer(orderId: string, buyerId: string) {
+  const prisma = getPrisma()
+
+  return prisma.order.findFirst({
+    where: {
+      id: orderId,
+      buyerId,
+    },
+    include: orderInclude,
   })
 }
 

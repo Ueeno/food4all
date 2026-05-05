@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppStateProvider, useAppState, type AuthRole } from "@/lib/app-state"
 import { BuyerProfileScreen } from "@/components/screens/buyer-pickup-screen"
 import { LoginScreen } from "@/components/screens/login-screen"
@@ -28,6 +28,7 @@ function StateProbe() {
       <span data-testid="screen">{currentScreen}</span>
       <span data-testid="selected-role">{selectedRole ?? "none"}</span>
       <span data-testid="selected-product">{selectedProductId ?? "none"}</span>
+      <span data-testid="current-user-id">{currentUser?.id ?? "none"}</span>
       <span data-testid="current-user-email">{currentUser?.email ?? "none"}</span>
       <span data-testid="cart-count">{cartCount}</span>
     </div>
@@ -41,7 +42,7 @@ function SeedAuthenticatedUser() {
   useEffect(() => {
     if (!seededRef.current && !currentUser) {
       seededRef.current = true
-      login({ email: "test@food4all.local", password: "password123" })
+      void login({ email: "test@food4all.local", password: "password123" })
     }
   }, [currentUser, login])
 
@@ -55,12 +56,12 @@ function SeedRole({ role }: { role: AuthRole }) {
   useEffect(() => {
     if (!seededRef.current && !currentUser) {
       seededRef.current = true
-      login({ email: `${role}@food4all.local`, password: "password123" })
+      void login({ email: `${role}@food4all.local`, password: "password123" })
       return
     }
 
     if (seededRef.current && currentUser && selectedRole !== role) {
-      selectRole(role)
+      void selectRole(role)
     }
   }, [currentUser, login, role, selectedRole, selectRole])
 
@@ -77,14 +78,13 @@ function renderWithAppState(ui: ReactNode, seed?: ReactNode) {
   )
 }
 
-async function advanceTimers(milliseconds: number) {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(milliseconds)
-  })
-}
+beforeEach(() => {
+  installMarketplaceFetchMock()
+})
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe("rendered auth screens", () => {
@@ -175,24 +175,42 @@ describe("rendered auth screens", () => {
     expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
   })
 
-  it("moves through local auth state on valid login", async () => {
-    vi.useFakeTimers()
+  it("calls backend login, stores the returned user, and navigates on success", async () => {
+    const fetchMock = installMarketplaceFetchMock()
     renderWithAppState(<LoginScreen />)
 
     fireEvent.change(screen.getByLabelText(/email address/i), {
-      target: { value: "buyer@food4all.local" },
+      target: { value: "login@food4all.local" },
     })
     fireEvent.change(screen.getByLabelText(/^password$/i), {
       target: { value: "password123" },
     })
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }))
-    await advanceTimers(1200)
 
-    expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
+    await waitFor(() => {
+      expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
+    })
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain("/api/auth/login")
     expect(screen.getByTestId("auth-status")).toHaveTextContent("authenticated")
-    expect(screen.getByTestId("current-user-email")).toHaveTextContent("buyer@food4all.local")
+    expect(screen.getByTestId("current-user-id")).toHaveTextContent("api-user-login-food4all-local")
+    expect(screen.getByTestId("current-user-email")).toHaveTextContent("login@food4all.local")
     expect(screen.getByTestId("selected-role")).toHaveTextContent("none")
     expect(screen.getByTestId("screen")).toHaveTextContent("role-select")
+  })
+
+  it("shows a visible login API error for invalid credentials", async () => {
+    renderWithAppState(<LoginScreen />)
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "invalid@food4all.local" },
+    })
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "password123" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email or password.")
+    expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
   })
 
   it("renders the register form", () => {
@@ -231,8 +249,8 @@ describe("rendered auth screens", () => {
     expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
   })
 
-  it("moves through local auth state on valid register", async () => {
-    vi.useFakeTimers()
+  it("calls backend register, stores the returned user, and navigates on success", async () => {
+    const fetchMock = installMarketplaceFetchMock()
     renderWithAppState(<RegisterScreen />)
 
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Maria" } })
@@ -244,11 +262,49 @@ describe("rendered auth screens", () => {
       target: { value: "password123" },
     })
     fireEvent.click(screen.getByRole("button", { name: /^create account$/i }))
-    await advanceTimers(1400)
 
-    expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
+    await waitFor(() => {
+      expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
+    })
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain("/api/auth/register")
+    expect(screen.getByTestId("current-user-id")).toHaveTextContent("api-user-maria-food4all-local")
     expect(screen.getByTestId("current-user-email")).toHaveTextContent("maria@food4all.local")
     expect(screen.getByTestId("selected-role")).toHaveTextContent("none")
+    expect(screen.getByTestId("screen")).toHaveTextContent("role-select")
+  })
+
+  it("shows a visible register API error for duplicate email", async () => {
+    renderWithAppState(<RegisterScreen />)
+
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Maria" } })
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: "Santos" } })
+    fireEvent.change(screen.getByLabelText(/^email$/i), {
+      target: { value: "duplicate@food4all.local" },
+    })
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "password123" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /^create account$/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "An account already exists for this email.",
+    )
+    expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
+  })
+
+  it("hydrates the current user and role from /api/auth/me", async () => {
+    await fetch("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "session@food4all.local", password: "password123" }),
+    })
+
+    renderWithAppState(<div />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
+    })
+    expect(screen.getByTestId("current-user-id")).toHaveTextContent("api-user-session-food4all-local")
+    expect(screen.getByTestId("current-user-email")).toHaveTextContent("session@food4all.local")
     expect(screen.getByTestId("screen")).toHaveTextContent("role-select")
   })
 
@@ -271,12 +327,14 @@ describe("rendered auth screens", () => {
       expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
     })
 
-    vi.useFakeTimers()
+    const fetchMock = installMarketplaceFetchMock()
     fireEvent.click(screen.getByRole("button", { name: /i'm a buyer/i }))
     fireEvent.click(screen.getByRole("button", { name: /continue as buyer/i }))
-    await advanceTimers(1000)
 
-    expect(screen.getByTestId("selected-role")).toHaveTextContent("buyer")
+    await waitFor(() => {
+      expect(screen.getByTestId("selected-role")).toHaveTextContent("buyer")
+    })
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain("/api/auth/role")
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-home")
   })
 
@@ -287,12 +345,12 @@ describe("rendered auth screens", () => {
       expect(screen.getByTestId("authenticated")).toHaveTextContent("true")
     })
 
-    vi.useFakeTimers()
     fireEvent.click(screen.getByRole("button", { name: /i'm a seller/i }))
     fireEvent.click(screen.getByRole("button", { name: /continue as seller/i }))
-    await advanceTimers(1000)
 
-    expect(screen.getByTestId("selected-role")).toHaveTextContent("seller")
+    await waitFor(() => {
+      expect(screen.getByTestId("selected-role")).toHaveTextContent("seller")
+    })
     expect(screen.getByTestId("screen")).toHaveTextContent("seller-dashboard")
   })
 })
@@ -311,9 +369,14 @@ describe("rendered profile logout buttons", () => {
     expect(localStorage.getItem(LOCAL_STORAGE_KEYS.selectedRole)).not.toBeNull()
     localStorage.setItem(LOCAL_STORAGE_KEYS.cartItems, JSON.stringify([{ id: "stale-cart" }]))
 
+    const fetchMock = installMarketplaceFetchMock()
+
     fireEvent.click(logoutButton)
 
-    expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
+    await waitFor(() => {
+      expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
+    })
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain("/api/auth/logout")
     expect(screen.getByTestId("auth-status")).toHaveTextContent("unauthenticated")
     expect(screen.getByTestId("selected-role")).toHaveTextContent("none")
     expect(screen.getByTestId("selected-product")).toHaveTextContent("none")
@@ -325,7 +388,6 @@ describe("rendered profile logout buttons", () => {
   })
 
   it("renders seller logout and clears shared auth state", async () => {
-    installMarketplaceFetchMock()
     renderWithAppState(<SellerProfileScreen />, <SeedRole role="seller" />)
 
     await waitFor(() => {
@@ -338,7 +400,9 @@ describe("rendered profile logout buttons", () => {
 
     fireEvent.click(logoutButton)
 
-    expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
+    await waitFor(() => {
+      expect(screen.getByTestId("authenticated")).toHaveTextContent("false")
+    })
     expect(screen.getByTestId("auth-status")).toHaveTextContent("unauthenticated")
     expect(screen.getByTestId("selected-role")).toHaveTextContent("none")
     expect(screen.getByTestId("selected-product")).toHaveTextContent("none")

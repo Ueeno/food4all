@@ -253,6 +253,33 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Added route-handler tests for unauthenticated/buyer blocking, own-profile reads, invalid patch validation, own-profile updates, second-seller isolation, and persisted `isOpen` toggles.
 - Added service/rendered tests and fetch-mock support for `GET /api/seller/profile` and `PATCH /api/seller/profile`.
 - Verification passed after Task 032: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 192 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 034 completed for SQL-backed frontend auth wiring.
+- Verified the existing route handlers and services first: `auth-service` already called `/api/auth/login`, `/api/auth/register`, `/api/auth/logout`, `/api/auth/me`, and `/api/auth/role`, while login/register screens still used local mock app-state transitions.
+- Updated `LoginScreen` and `RegisterScreen` to validate with the existing helpers, call the app-state backend auth actions, show loading, show visible API errors, and store returned SQL/API users without creating normal-path `mock-*` users.
+- Updated `app-state` login/register/logout/hydration to use the SQL-backed auth service, hydrate current user from `/api/auth/me`, persist returned users as fallback localStorage state, and keep logout cleanup resilient even if the logout API fails.
+- Kept `local-auth-flow.ts` and its pure tests as legacy test/fallback coverage only; normal UI login/register no longer use `createLoginTransition` or `createRegisterTransition`.
+- Kept the role-selection mock bypass isolated to legacy `mock-*` fallback users; normal backend user ids call `PATCH /api/auth/role`.
+- Extended `test/api-fetch-mock.ts` with typed auth endpoint handlers for login, register, logout, me, and role, returning realistic non-`mock-*` ApiUser ids for normal auth success.
+- Updated rendered auth tests to cover backend login/register calls, success state storage/navigation, API error visibility, logout endpoint calls and cleanup, `/api/auth/me` hydration, and normal backend role selection using the role endpoint.
+- Verification passed after Task 034: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 195 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 035 completed for persisting selected checkout pickup date/time into SQL-backed order creation.
+- Verified before editing that `CreateOrderRequest` already includes `pickupDate` and `pickupTime`, `order-service.createOrder()` already passes both to `POST /api/orders`, and the route already validates and persists both fields into Prisma `Order.pickupDate` and `Order.pickupTime`.
+- Fixed the frontend leak: `BuyerCartScreen` selected pickup slot is now stored in shared app state, and `BuyerCheckoutScreen` submits the selected `pickupDate` and `pickupTime` instead of always sending the current ISO timestamp plus hardcoded `"2:00 PM"`.
+- Checkout pickup details now render the selected slot, and the default remains `Today 2:00 PM` only as the initial selected option.
+- Updated the fetch mock so created buyer orders are retained for `GET /api/orders`, while `POST /api/orders` continues to use request `pickupDate` and `pickupTime`.
+- Added backend route coverage proving `POST /api/orders` persists selected pickup date/time, returns them in the created `ApiOrder`, and buyer order history returns the same selected values.
+- Added rendered checkout coverage proving a changed pickup slot updates the checkout request body, selected order state, and pickup QR display.
+- Verification passed after Task 035: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 197 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 036 completed for buyer order detail/pickup data and pickup QR refresh/deep-link recovery.
+- Added `GET /api/orders/[id]` for authenticated buyers, with unauthenticated users returning `401`, seller users returning `403`, buyer ownership enforced through buyer-scoped lookup, and missing/other-buyer orders returning `404`.
+- Extended order DTO mapping with optional `pickupLocation`, derived from the current linked order-item product pickup address when available and falling back to the seller profile address. The `Order` table still does not snapshot pickup location, so this remains a derived current-data value rather than immutable order history.
+- Added `getBuyerOrderById(orderId)` to the order service and added `/api/orders/:id` to the typed API endpoint contract.
+- Added `selectedOrderId`/`selectOrderId` to app state and clear it on login/register/logout alongside selected order state.
+- Updated `BuyerPickupQRScreen` so existing `selectedOrder` renders immediately, while an id-only handoff fetches order detail with loading, visible error, retry, and pickup-location display. The safe no-order fallback remains unchanged when no order or id exists.
+- Updated the fetch mock so created mock buyer orders can be fetched by `GET /api/orders/[id]`, and mock-created orders now carry a pickup location from the cart item location.
+- Added backend route tests for buyer order detail auth/role enforcement, own-order fetch, another-buyer isolation, missing-order 404, selected pickup date/time, and pickup location in the response.
+- Added rendered tests for existing selected-order QR rendering, id-only order-detail recovery, loading state, error + retry, pickup location display, and safe fallback behavior.
+- Verification passed after Task 036: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
 
 ## Finished
 - Task 001: React/Next marketplace is buildable and type-checkable.
@@ -287,21 +314,25 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Task 030 recovery: Seller order status integration tests now pass with correct Next dynamic route params for created order ids.
 - Task 031: Seller reports now use `GET /api/seller/reports` through the seller-service boundary, computing seller-owned SQL report data with loading, error/retry, and empty states.
 - Task 032: Seller profile and store status now use `GET /api/seller/profile` and `PATCH /api/seller/profile` through the seller-service boundary, with SQL-backed profile reads, persisted store status, loading/error/retry, and toggle failure handling.
+- Task 034: Frontend login/register/logout/current-user hydration now use the SQL-backed auth service endpoints, with rendered coverage for success, API failure, logout cleanup, `/api/auth/me` hydration, and backend role selection.
+- Task 035: Buyer checkout now submits the selected pickup date/time to SQL-backed order creation, and created/order-history DTOs preserve the selected pickup slot.
+- Task 036: Buyer pickup QR can recover order detail from `GET /api/orders/[id]` using selected order id, with buyer-only ownership enforcement and pickup location shown where derivable.
 - `build` passes with TypeScript errors no longer hidden.
 - `lint` passes with no warnings or errors.
 - `typecheck` passes.
 - `test` passes with the Vitest service-contract, navigation-guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence baselines, backend response/validation/mapper utility coverage, and isolated backend route-handler integration coverage.
 - Required app-level UI components exist under `components/food4all/`.
 - Key repeated screen patterns now use the app-level UI components.
-- Login/register forms now validate basic input before creating mock authenticated state.
+- Login/register forms now validate basic input before calling SQL-backed auth endpoints and storing returned API users.
 - Login/register validation is shared and tested for empty inputs, invalid email, and weak/empty password cases.
 - Buyer and seller screen navigation is guarded by local authenticated role state.
 - Guard tests prove unauthenticated users cannot access protected buyer/seller screens, buyers cannot access seller screens, and sellers cannot access buyer screens.
 - Buyer and seller logout now clears local auth and role state consistently.
 - Buyer and seller logout now clears temporary stored auth user, selected role, and cart state consistently.
-- Local auth-flow tests prove login/register create authenticated local state, buyer/seller role selection reaches the correct protected area, and logout clears user, role, product, cart, and screen state.
-- Rendered component tests prove login/register validation messages render, valid auth form submissions update local app state, role selection reaches buyer/seller areas, and buyer/seller profile logout buttons use shared logout behavior.
+- Local auth-flow tests remain as pure legacy fallback coverage for mock transitions and logout cleanup.
+- Rendered component tests prove login/register validation messages render, valid auth form submissions call backend auth endpoints and update local app state with returned users, role selection reaches buyer/seller areas through the backend role endpoint for normal users, and buyer/seller profile logout buttons call backend logout while clearing shared auth state.
 - Rendered marketplace tests prove buyer product cards render, add-to-cart updates local cart state, cart empty/filled/remove states render, checkout confirms into pickup QR state, seller dashboard/products/orders render through their current boundaries, and seller pickup verification uses API-backed service behavior.
+- Rendered checkout tests prove changing the pickup slot sends the selected date/time to `/api/orders`, stores it on the selected order, and shows the selected time on the pickup QR screen.
 - Rendered cart tests prove local quantity increment/decrement behavior updates visible quantities, cart count, cart totals, removal at quantity one, and checkout summary quantities.
 - Rendered Task 011 tests prove buyer order history, pickup QR/claim confirmation, buyer profile, seller add-product form/mock submit, seller reports, and seller profile render their current mock flows.
 - Rendered Task 012 tests prove empty and invalid seller add-product submissions show validation errors and do not navigate, while valid mock submit still reaches seller products.
@@ -312,7 +343,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Key buyer browsing/detail screens and seller screens now read mock data through service contracts instead of direct mock-data imports.
 
 ## Unfinished
-- Backend implementation remains incomplete beyond auth/category/product reads, seller product management, buyer cart APIs, buyer order creation/listing, seller pickup verification, seller order listing/status, seller dashboard metrics, seller reports, seller profile, and auth role selection.
+- Backend implementation remains incomplete beyond auth/category/product reads, seller product management, buyer cart APIs, buyer order creation/listing/detail, seller pickup verification, seller order listing/status, seller dashboard metrics, seller reports, seller profile, and auth role selection.
 - Production database implementation and migration history remain unfinished; Task 015 used local SQLite `db push` only.
 - Database migrations remain unfinished.
 - Backend-backed buyer profile workflow data remains unfinished.
@@ -324,22 +355,22 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 ## Partially Finished
 - React/Next marketplace UI exists and compiles.
 - Buyer and seller screens exist; seller profile is API-backed, while buyer profile remains mock/local.
-- State management exists through React context, including local auth state and temporary fallback `localStorage` persistence; auth, role selection, cart, order, seller dashboard, seller reports, and seller profile service calls are backend-backed where implemented.
+- State management exists through React context, including SQL-backed auth hydration/actions and temporary fallback `localStorage` persistence; auth, role selection, cart, order/detail handoff, seller dashboard, seller reports, and seller profile service calls are backend-backed where implemented.
 - Backend architecture is planned, typed, and partially implemented at the foundation level with Prisma, helpers, seed data, initial read/auth routes, and isolated route-handler tests.
 - Backend seller product listing and mutation APIs are implemented and tested, and the seller frontend list/add/edit/delete UI plus create/update/delete/list service functions now call them.
 - Reusable UI baseline is complete, but not every screen has been fully migrated away from inline layout-specific UI.
 - `LoadingView` exists and compiles, but broader loading-state adoption remains partial because most current flows use local mock timers or no async state.
-- The service layer is mixed: auth/category/product read services, role selection, seller product listing/create/update/delete, buyer cart reads/mutations, buyer order creation/listing, buyer order-history display, buyer pickup QR selected-order display, seller pickup verification, seller order listing/status updates, seller dashboard, seller reports, and seller profile are API-backed or SQL-order-backed, while buyer profile remains mock/local.
-- Service, API client, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, typed API envelope handling, service API calls, pure navigation boundaries, app-state transitions, key rendered auth/logout behavior, buyer/seller mock marketplace flows, backend-backed buyer cart and buyer order behavior, seller dashboard/report/profile behavior, remaining buyer profile screen behavior, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and backend route behavior including order creation and listing.
+- The service layer is mixed: auth/category/product read services, auth UI actions/hydration, role selection, seller product listing/create/update/delete, buyer cart reads/mutations, buyer order creation/listing/detail with selected pickup slot persistence, buyer order-history display, buyer pickup QR selected-order/id recovery display, seller pickup verification, seller order listing/status updates, seller dashboard, seller reports, and seller profile are API-backed or SQL-order-backed, while buyer profile remains mock/local.
+- Service, API client, guard, local auth-flow, local-storage helper, rendered auth component, rendered marketplace-flow, rendered cart quantity, remaining buyer/seller mock-flow, seller add-product validation, temporary persistence, backend utility, route-handler integration, and API contract typecheck coverage now cover core contracts, typed API envelope handling, service API calls, pure navigation boundaries, app-state transitions, key rendered SQL-backed auth/logout/hydration behavior, buyer/seller mock marketplace flows, backend-backed buyer cart and buyer order behavior including selected pickup date/time persistence and buyer order detail recovery, seller dashboard/report/profile behavior, remaining buyer profile screen behavior, seller add-product error states, local storage fallback behavior, planned API DTO shape, shared backend helper behavior, and backend route behavior including order creation/listing/detail.
 
 ## Broken or Risky
-- No Task 001-032 build/typecheck/lint/test blocker remains after verification.
+- No Task 001-036 build/typecheck/lint/test blocker remains after verification.
 - Seller profile sales/products/orders stats and business hours remain presentation-only because the current seller profile schema does not persist those fields.
 - Seller report waste-reduced and meals-saved metrics are neutral `0` fallbacks because the current schema does not store normalized waste or meal-equivalent data.
 - Buyer order-history savings/waste metrics are neutral because the current order API/service DTO does not expose savings or waste values yet.
-- Buyer pickup QR shows a neutral "Pickup location unavailable" value because the current order API/service DTO does not expose seller pickup address/location data.
-- Buyer pickup QR selected-order state is in-memory; direct refresh or deep linking to `buyer-pickup-qr` shows the safe fallback until an order detail endpoint or persisted selected-order handoff is added.
-- Cart localStorage is now fallback-only for guest/API-unavailable behavior while the app-state auth shell remains local; authenticated server-cookie cart behavior is handled by the cart APIs and service.
+- Buyer pickup QR now shows `pickupLocation` where derivable, but order pickup location is not snapshotted on the `Order` table; it is derived from the current linked product pickup address or seller profile address.
+- Buyer pickup QR can recover from an id-only selected-order handoff, but a true URL route/param model for public deep links still does not exist; without selected order state or selected order id, the safe fallback remains.
+- Auth and cart localStorage are now fallback-only compatibility paths; normal auth UI uses server-cookie auth endpoints, and authenticated cart behavior is handled by the cart APIs and service.
 - Seller product management UI is now wired for list/add/edit/delete through SQL-backed APIs; image upload and archive/restore remain out of scope.
 - Server auth/session route handlers now exist and have initial integration tests, but they still need rate limiting, hardening, and broader auth/role coverage.
 - The local SQLite runtime depends on `better-sqlite3`; `package.json` allows that package's build script through pnpm so the native binding can be installed locally.
@@ -349,8 +380,8 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 032: Completed and verified.
+- Task 036: Completed and verified.
 
 ## Next Recommended Work
-- Task 033: Choose the next narrow backend-backed workflow, likely buyer profile or production migration history, and keep browser/e2e coverage as a separate scoped task.
+- Task 037: Choose the next narrow backend-backed workflow, likely buyer profile or production migration history, and keep browser/e2e coverage as a separate scoped task.
 - Future: Profile hardening, production deployment readiness, and browser/e2e coverage as separate scoped tasks.

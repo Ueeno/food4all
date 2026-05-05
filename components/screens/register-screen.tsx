@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useAppState } from "@/lib/app-state"
+import { isApiClientError } from "@/lib/api-client"
 import { validateRegisterInput, type RegisterValidationErrors } from "@/lib/auth-validation"
 import { AppButton, AppTextField } from "@/components/food4all"
 import { Eye, EyeOff, Mail, Lock, User, Phone, ChevronLeft } from "lucide-react"
@@ -26,25 +27,36 @@ export function RegisterScreen() {
     password: "",
   })
   const [errors, setErrors] = useState<RegisterValidationErrors>({})
+  const [actionError, setActionError] = useState("")
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!validateRegister()) return
 
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      register({
+    setActionError("")
+
+    try {
+      await register({
         ...form,
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         email: form.email.trim(),
       })
-    }, 1400)
+    } catch (error) {
+      if (isApiClientError(error) && error.fieldErrors) {
+        setErrors(error.fieldErrors)
+      }
+
+      setActionError(error instanceof Error ? error.message : "Unable to create account.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((f) => ({ ...f, [key]: value }))
     setErrors((current) => ({ ...current, [key]: undefined }))
+    setActionError("")
   }
 
   const validateRegister = () => {
@@ -144,6 +156,12 @@ export function RegisterScreen() {
               </button>
             }
           />
+
+          {actionError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-4" role="alert">
+              <p className="text-sm text-red-500 text-center">{actionError}</p>
+            </div>
+          )}
 
           {/* Terms */}
           <label className="flex items-start gap-3 mb-5 cursor-pointer">

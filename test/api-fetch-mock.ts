@@ -8,6 +8,7 @@ import type {
   ApiProduct,
   ApiSellerProfile,
   ApiSellerReportTopProduct,
+  ApiUser,
 } from "@/lib/api-contracts"
 import { CATEGORIES, PRODUCTS, SELLER_ORDERS } from "@/lib/mock-data"
 import type { Category, Order, Product } from "@/lib/types"
@@ -30,6 +31,22 @@ export const API_PRODUCTS: ApiProduct[] = PRODUCTS.map((product) => ({
   createdAt: "2026-05-04T00:00:00.000Z",
   updatedAt: "2026-05-04T00:00:00.000Z",
 }))
+
+function toApiUser(email: string, overrides: Partial<ApiUser> = {}): ApiUser {
+  const normalizedEmail = email.trim().toLowerCase()
+  const nameSeed = normalizedEmail.split("@")[0]?.replace(/[._-]+/g, " ") || "food4all user"
+  const name = nameSeed.replace(/\b\w/g, (character) => character.toUpperCase())
+
+  return {
+    id: `api-user-${slugify(normalizedEmail) || "user"}`,
+    name,
+    email: normalizedEmail,
+    role: null,
+    createdAt: "2026-05-04T00:00:00.000Z",
+    updatedAt: "2026-05-04T00:00:00.000Z",
+    ...overrides,
+  }
+}
 
 export const API_SELLER_REPORTS = {
   revenue: {
@@ -214,7 +231,9 @@ export function installMarketplaceFetchMock() {
   const sellerProducts: ApiProduct[] = API_PRODUCTS.map((product) => ({ ...product }))
   const sellerOrders: Order[] = SELLER_ORDERS.map((order) => ({ ...order }))
   let sellerProfile: ApiSellerProfile = { ...API_SELLER_PROFILE }
+  let currentUser: ApiUser | null = null
   const cartItems: ApiCartItem[] = []
+  const buyerOrders: ApiOrder[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = parseFetchUrl(input)
     const requestMethod = input instanceof Request ? input.method : init?.method
@@ -224,6 +243,65 @@ export function installMarketplaceFetchMock() {
       if (input instanceof Request) return input.json() as Promise<unknown>
       if (typeof requestBody === "string") return JSON.parse(requestBody) as unknown
       return {}
+    }
+
+    if (url.pathname === "/api/auth/login" && (requestMethod ?? "GET") === "POST") {
+      const body = (await readRequestBody()) as { email?: string; password?: string }
+      const email = body.email?.trim().toLowerCase() ?? ""
+
+      if (!email || !body.password) {
+        return apiErrorResponse("VALIDATION_ERROR", "Please fix the highlighted fields.", 422, {
+          ...(!email ? { email: "Email is required." } : {}),
+          ...(!body.password ? { password: "Password is required." } : {}),
+        })
+      }
+
+      if (body.password !== "password123" || email.includes("invalid")) {
+        return apiErrorResponse("UNAUTHENTICATED", "Invalid email or password.", 401)
+      }
+
+      const role =
+        email === "buyer@food4all.local"
+          ? "buyer"
+          : email === "seller@food4all.local"
+            ? "seller"
+            : null
+      currentUser = toApiUser(email, { name: role ? "FOOD4ALL User" : "API Login User", role })
+
+      return apiSuccessResponse({ user: { ...currentUser } })
+    }
+
+    if (url.pathname === "/api/auth/register" && (requestMethod ?? "GET") === "POST") {
+      const body = (await readRequestBody()) as {
+        firstName?: string
+        lastName?: string
+        phone?: string
+        email?: string
+        password?: string
+        role?: ApiUser["role"]
+      }
+      const email = body.email?.trim().toLowerCase() ?? ""
+
+      if (email.includes("duplicate")) {
+        return apiErrorResponse("CONFLICT", "An account already exists for this email.", 409)
+      }
+
+      currentUser = toApiUser(email, {
+        name: `${body.firstName?.trim() ?? ""} ${body.lastName?.trim() ?? ""}`.trim() || "API Register User",
+        role: body.role ?? null,
+      })
+
+      return apiSuccessResponse({ user: { ...currentUser } }, { status: 201 })
+    }
+
+    if (url.pathname === "/api/auth/logout" && (requestMethod ?? "GET") === "POST") {
+      currentUser = null
+
+      return apiSuccessResponse({ loggedOut: true as const })
+    }
+
+    if (url.pathname === "/api/auth/me" && (requestMethod ?? "GET") === "GET") {
+      return apiSuccessResponse({ user: currentUser ? { ...currentUser } : null })
     }
 
     if (url.pathname === "/api/cart") {
@@ -247,14 +325,13 @@ export function installMarketplaceFetchMock() {
           role: "Role must be buyer or seller.",
         })
       }
-      return apiSuccessResponse({
-        user: {
-          id: "mock-buyer",
-          name: "Mock User",
-          email: "buyer@example.test",
-          role: body.role,
-        },
-      })
+      currentUser = {
+        ...(currentUser ?? toApiUser("buyer@example.test", { name: "API Role User" })),
+        role: body.role as ApiUser["role"],
+        updatedAt: "2026-05-05T00:00:00.000Z",
+      }
+
+      return apiSuccessResponse({ user: { ...currentUser } })
     }
 
     if (url.pathname === "/api/cart/items") {
@@ -477,10 +554,11 @@ export function installMarketplaceFetchMock() {
           quantity: cartItems.reduce((sum, item) => sum + item.quantity, 0),
           total: totalAmount,
           status: "reserved",
-          pickupDate: body.pickupDate ?? new Date().toISOString(),
-          pickupTime: body.pickupTime ?? "2:00 PM",
-          pickupCode: "F4A-MOCK",
-          items: cartItems.map((item) => ({
+    pickupDate: body.pickupDate ?? new Date().toISOString(),
+    pickupTime: body.pickupTime ?? "2:00 PM",
+    pickupCode: "F4A-MOCK",
+    pickupLocation: cartItems[0]?.location ?? "Pickup location unavailable",
+    items: cartItems.map((item) => ({
             id: `oi-${item.productId}`,
             orderId,
             productId: item.productId,
@@ -494,15 +572,30 @@ export function installMarketplaceFetchMock() {
           updatedAt: "2026-05-04T00:00:00.000Z",
         }
 
+        buyerOrders.unshift(order)
         cartItems.splice(0, cartItems.length)
 
         return apiSuccessResponse({ order }, { status: 201 })
       }
 
       if (method === "GET") {
-        return apiSuccessResponse({ orders: [] })
+        return apiSuccessResponse({ orders: buyerOrders.map((order) => ({ ...order })) })
       }
     }
+
+    const buyerOrderDetailMatch = url.pathname.match(/^\/api\/orders\/(.+)$/)
+
+    if (buyerOrderDetailMatch?.[1] && (requestMethod ?? "GET") === "GET") {
+      const orderId = decodeURIComponent(buyerOrderDetailMatch[1])
+      const order = buyerOrders.find((item) => item.id === orderId)
+
+      if (!order) {
+        return apiErrorResponse("NOT_FOUND", "Order was not found.", 404)
+      }
+
+      return apiSuccessResponse({ order: { ...order } })
+    }
+
     if (url.pathname === "/api/seller/orders") {
       const orders = sellerOrders.map((order) => toApiOrder(order))
       return apiSuccessResponse({ orders })
