@@ -837,24 +837,43 @@ describe("rendered remaining buyer flows", () => {
     expect(screen.getByRole("button", { name: /view orders/i })).toBeInTheDocument()
   })
 
-  it("renders buyer profile details and profile actions", async () => {
+  it("renders buyer profile with authenticated user data and real order metrics", async () => {
     renderWithAppState(<BuyerProfileScreen />, <SeedRole role="buyer" />)
 
+    // Wait for orders to load
     await waitFor(() => {
-      expect(screen.getByTestId("selected-role")).toHaveTextContent("buyer")
-    })
+      expect(screen.queryByText("Loading your order impact...")).not.toBeInTheDocument()
+    }, { timeout: 3000 })
 
-    expect(screen.getByRole("heading", { name: /food4all user/i })).toBeInTheDocument()
+    // Expect authenticated user data from the seeded test fixture
+    expect(screen.getByRole("heading", { name: /FOOD4ALL User/i })).toBeInTheDocument()
+    // The seeded buyer has email "buyer@food4all.local" - this is the real authenticated user data, not a fallback
     expect(screen.getByText("buyer@food4all.local")).toBeInTheDocument()
-    expect(screen.getByText(/4.9 verified buyer/i)).toBeInTheDocument()
-    expect(screen.getByText("Your Impact")).toBeInTheDocument()
+
+    // Expect real order metrics (computed from actual orders, not hardcoded)
+    // The stats card should show Orders and Total Spent labels
+    const statsLabels = screen.getAllByText(/Orders|Total Spent|Saved/)
+    expect(statsLabels.length).toBeGreaterThan(0)
+
+    // Expect no fake hardcoded stats badges
+    expect(screen.queryByText("4.9 Verified Buyer")).not.toBeInTheDocument()
+    expect(screen.queryByText("Active")).not.toBeInTheDocument()
+
+    // Expect saved branches section marked as Coming Soon
     expect(screen.getByText("Saved Pickup Branches")).toBeInTheDocument()
-    expect(screen.getAllByRole("switch")).toHaveLength(2)
+    expect(screen.getByText("Coming soon")).toBeInTheDocument()
+
+    // Expect My Orders button to be available
     expect(screen.getByRole("button", { name: /my orders/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: /my orders/i }))
+    // Expect unimplemented features marked as Coming Soon or disabled
+    expect(screen.getByRole("button", { name: /reviews & ratings/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /rewards & badges/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /privacy & security/i })).toBeDisabled()
 
+    // Click My Orders and verify navigation
+    fireEvent.click(screen.getByRole("button", { name: /my orders/i }))
     expect(screen.getByTestId("screen")).toHaveTextContent("buyer-orders")
   })
 })

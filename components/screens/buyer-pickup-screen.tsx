@@ -23,7 +23,7 @@ import {
   QrCode,
   Settings,
   HelpCircle,
-  ChevronDown,
+  AlertCircle,
 } from "lucide-react"
 
 // ─── QR Pickup Confirmation Screen ─────────────────────────────
@@ -559,8 +559,12 @@ export function BuyerProfileScreen() {
   const { navigate, logout, currentUser } = useAppState()
   const [notificationsOn, setNotificationsOn] = useState(true)
   const [dealsAlertsOn, setDealsAlertsOn] = useState(true)
-  const profileName = currentUser?.name ?? "FOOD4ALL Buyer"
-  const profileEmail = currentUser?.email ?? "buyer@food4all.local"
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loadingOrders, setLoadingOrders] = useState(true)
+  const [orderError, setOrderError] = useState<string | null>(null)
+
+  const profileName = currentUser?.name || "FOOD4ALL User"
+  const profileEmail = currentUser?.email || ""
   const profileInitials =
     profileName
       .split(/\s+/)
@@ -569,16 +573,38 @@ export function BuyerProfileScreen() {
       .map((part) => part[0]?.toUpperCase())
       .join("") || "FB"
 
-  const savedBranches = [
-    { name: "Magsaysay Meat Depot", area: "Poblacion District", distance: "0.8 km" },
-    { name: "Gaisano Grand Davao", area: "Bajada", distance: "2.1 km" },
-    { name: "Lanang Premier", area: "Lanang", distance: "3.5 km" },
-  ]
+  // Fetch buyer orders on mount
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoadingOrders(true)
+        setOrderError(null)
+        const fetched = await getBuyerOrders()
+        setOrders(fetched)
+      } catch (error) {
+        setOrderError(error instanceof Error ? error.message : "Failed to load orders")
+        setOrders([])
+      } finally {
+        setLoadingOrders(false)
+      }
+    }
+
+    fetchOrders()
+  }, [])
+
+  // Compute metrics from real orders
+  const totalOrders = orders.length
+  const totalSpent = orders.reduce((sum, order) => sum + (order.total || 0), 0)
+  
+  // Total saved computed from order item price differences (if available in API)
+  // For now, show as unavailable since OrderItem pricing details may not be in Order type
+  const totalSaved = 0
+  const totalSavedAvailable = false
 
   const stats = [
-    { label: "Orders", value: "12" },
-    { label: "Total Saved", value: "₱2,840" },
-    { label: "Waste Saved", value: "18 kg" },
+    { label: "Orders", value: String(totalOrders) },
+    { label: "Total Spent", value: `₱${totalSpent.toLocaleString()}` },
+    { label: "Saved", value: totalSavedAvailable ? `₱${totalSaved}` : "—" },
   ]
 
   const menuSections = [
@@ -586,16 +612,16 @@ export function BuyerProfileScreen() {
       title: "Account",
       items: [
         { icon: <Package className="w-4 h-4 text-primary" />, label: "My Orders", screen: "buyer-orders" as const },
-        { icon: <Star className="w-4 h-4 text-primary" />, label: "Reviews & Ratings", screen: null },
-        { icon: <Award className="w-4 h-4" style={{ color: "var(--warning)" }} />, label: "Rewards & Badges", screen: null },
+        { icon: <Star className="w-4 h-4 text-muted-foreground" />, label: "Reviews & Ratings", screen: null, comingSoon: true },
+        { icon: <Award className="w-4 h-4 text-muted-foreground" />, label: "Rewards & Badges", screen: null, comingSoon: true },
       ],
     },
     {
       title: "App Settings",
       items: [
-        { icon: <ShieldCheck className="w-4 h-4 text-primary" />, label: "Privacy & Security", screen: null },
-        { icon: <Settings className="w-4 h-4 text-muted-foreground" />, label: "Preferences", screen: null },
-        { icon: <HelpCircle className="w-4 h-4 text-muted-foreground" />, label: "Help & Support", screen: null },
+        { icon: <ShieldCheck className="w-4 h-4 text-muted-foreground" />, label: "Privacy & Security", screen: null, comingSoon: true },
+        { icon: <Settings className="w-4 h-4 text-muted-foreground" />, label: "Preferences", screen: null, comingSoon: true },
+        { icon: <HelpCircle className="w-4 h-4 text-muted-foreground" />, label: "Help & Support", screen: null, comingSoon: true },
       ],
     },
   ]
@@ -612,17 +638,7 @@ export function BuyerProfileScreen() {
           </div>
           <div>
             <h1 className="text-white font-black text-xl leading-tight">{profileName}</h1>
-            <p className="text-white/65 text-xs mt-0.5">{profileEmail}</p>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <div className="badge-trust rounded-full px-2.5 py-0.5 text-[10px] font-semibold flex items-center gap-1">
-                <Star className="w-2.5 h-2.5 fill-current" aria-hidden="true" />
-                4.9 Verified Buyer
-              </div>
-              <div className="flex items-center gap-1 bg-white/15 rounded-full px-2 py-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400" aria-hidden="true" />
-                <span className="text-white/80 text-[9px] font-semibold">Active</span>
-              </div>
-            </div>
+            <p className="text-white/65 text-xs mt-0.5">{profileEmail || "No email set"}</p>
           </div>
         </div>
       </div>
@@ -643,26 +659,76 @@ export function BuyerProfileScreen() {
         </div>
 
         {/* Environmental impact */}
-        <div className="px-5 mb-5">
-          <div className="glass-card rounded-2xl p-4" style={{ borderColor: "oklch(0.50 0.16 142 / 0.25)", borderWidth: "1px" }}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: "var(--success-bg)" }}>
-                <Leaf className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
+        {loadingOrders ? (
+          <div className="px-5 mb-5">
+            <div className="glass-card rounded-2xl p-4" style={{ borderColor: "oklch(0.50 0.16 142 / 0.25)", borderWidth: "1px" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 bg-muted animate-pulse"
+                  style={{ background: "var(--success-bg)" }}>
+                  <Leaf className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
+                </div>
+                <h3 className="font-bold text-sm" style={{ color: "var(--success)" }}>Your Impact</h3>
               </div>
-              <h3 className="font-bold text-sm" style={{ color: "var(--success)" }}>Your Impact</h3>
+              <p className="text-xs text-foreground/70 leading-relaxed">Loading your order impact...</p>
             </div>
-            <p className="text-xs text-foreground/70 leading-relaxed">
-              You&apos;ve prevented <strong style={{ color: "var(--success)" }}>18 kg</strong> of food waste and
-              saved <strong style={{ color: "var(--success)" }}>₱2,840</strong> across 12 orders. Keep going!
-            </p>
-            <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all"
-                style={{ width: "72%", background: "var(--success)" }} />
-            </div>
-            <p className="text-[9px] text-muted-foreground mt-1">72% towards your 25 kg badge</p>
           </div>
-        </div>
+        ) : orderError ? (
+          <div className="px-5 mb-5">
+            <div className="glass-card rounded-2xl p-4" style={{ borderColor: "oklch(0.50 0.16 142 / 0.25)", borderWidth: "1px" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "var(--danger-bg)" }}>
+                  <AlertCircle className="w-3.5 h-3.5" style={{ color: "var(--danger)" }} />
+                </div>
+                <h3 className="font-bold text-sm" style={{ color: "var(--danger)" }}>Unable to Load Impact</h3>
+              </div>
+              <p className="text-xs text-foreground/70 leading-relaxed">{orderError}</p>
+            </div>
+          </div>
+        ) : totalOrders === 0 ? (
+          <div className="px-5 mb-5">
+            <div className="glass-card rounded-2xl p-4" style={{ borderColor: "oklch(0.50 0.16 142 / 0.25)", borderWidth: "1px" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "var(--success-bg)" }}>
+                  <Leaf className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
+                </div>
+                <h3 className="font-bold text-sm" style={{ color: "var(--success)" }}>Your Impact</h3>
+              </div>
+              <p className="text-xs text-foreground/70 leading-relaxed">
+                No orders yet. Place your first order to see your impact!
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="px-5 mb-5">
+            <div className="glass-card rounded-2xl p-4" style={{ borderColor: "oklch(0.50 0.16 142 / 0.25)", borderWidth: "1px" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "var(--success-bg)" }}>
+                  <Leaf className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
+                </div>
+                <h3 className="font-bold text-sm" style={{ color: "var(--success)" }}>Your Impact</h3>
+              </div>
+             <p className="text-xs text-foreground/70 leading-relaxed">
+                 You&apos;ve made{" "}
+                 <strong style={{ color: "var(--success)" }}>
+                   {totalOrders} purchase{totalOrders !== 1 ? "s" : ""}
+                 </strong>{" "}
+                 and spent{" "}
+                 <strong style={{ color: "var(--success)" }}>
+                   ₱{totalSpent.toLocaleString()}
+                 </strong>
+                 . Thank you for supporting local producers!
+              </p>
+
+              <div className="mt-3 h-1.5 bg-border rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(totalOrders * 10, 100)}%`, background: "var(--success)" }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Notifications toggles */}
         <div className="px-5 mb-5">
@@ -696,22 +762,11 @@ export function BuyerProfileScreen() {
           </div>
         </div>
 
-        {/* Saved pickup branches */}
+        {/* Saved pickup branches - Coming Soon */}
         <div className="px-5 mb-5">
           <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 px-1">Saved Pickup Branches</h3>
-          <div className="flex flex-col gap-2">
-            {savedBranches.map((branch, idx) => (
-              <div key={idx} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
-                <div className="w-8 h-8 sky-gradient rounded-xl flex items-center justify-center shrink-0">
-                  <MapPin className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground line-clamp-1">{branch.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{branch.area} · {branch.distance}</p>
-                </div>
-                <ChevronDown className="w-4 h-4 text-muted-foreground rotate-[-90deg]" aria-hidden="true" />
-              </div>
-            ))}
+          <div className="glass-card rounded-2xl px-4 py-3">
+            <p className="text-xs text-muted-foreground">Coming soon</p>
           </div>
         </div>
 
@@ -720,19 +775,24 @@ export function BuyerProfileScreen() {
           <div key={title} className="px-5 mb-4">
             <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 px-1">{title}</h3>
             <div className="glass-card rounded-2xl overflow-hidden">
-              {items.map(({ icon, label, screen }, idx) => (
+              {items.map(({ icon, label, screen, comingSoon }, idx) => (
                 <button
                   key={label}
                   onClick={() => screen && navigate(screen)}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-muted transition-colors text-left ${
-                    idx < items.length - 1 ? "border-b border-border" : ""
-                  }`}
+                  disabled={comingSoon || !screen}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition-colors text-left ${
+                    comingSoon || !screen ? "opacity-60 cursor-not-allowed" : "hover:bg-muted"
+                  } ${idx < items.length - 1 ? "border-b border-border" : ""}`}
                 >
                   <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0">
                     {icon}
                   </div>
                   <span className="flex-1 text-sm font-semibold text-foreground">{label}</span>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  {comingSoon ? (
+                    <span className="text-[9px] font-semibold text-muted-foreground">Soon</span>
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  )}
                 </button>
               ))}
             </div>
