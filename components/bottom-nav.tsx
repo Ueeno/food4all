@@ -1,7 +1,7 @@
 "use client"
 
 import { useAppState, type Screen } from "@/lib/app-state"
-import { Home, Grid3X3, ShoppingCart, Package, User, LayoutDashboard, PlusSquare, ClipboardList, BarChart3 } from "lucide-react"
+import { Home, Grid3X3, ShoppingCart, Package, User, LayoutDashboard, ClipboardList, PlusSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface NavItem {
@@ -23,7 +23,8 @@ const SELLER_ITEMS: NavItem[] = [
   { label: "Products", icon: ClipboardList, screen: "seller-products" },
   { label: "Add", icon: PlusSquare, screen: "seller-add-product" },
   { label: "Orders", icon: Package, screen: "seller-orders" },
-  { label: "Reports", icon: BarChart3, screen: "seller-reports" },
+  { label: "Profile", icon: User, screen: "seller-profile" },
+
 ]
 
 export function BottomNav() {
