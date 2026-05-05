@@ -1786,7 +1786,7 @@ export function SellerProfileScreen() {
 
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden bg-background">
-      <div className="sky-gradient-deep pt-12 pb-20 px-5 relative overflow-hidden shrink-0">
+      <div className="sky-gradient-deep pt-12 pb-8 px-5 relative overflow-hidden shrink-0">
         <div className="absolute top-0 right-0 w-44 h-44 rounded-full opacity-15 pointer-events-none"
           style={{ background: "radial-gradient(circle, white 0%, transparent 70%)" }} aria-hidden="true" />
         <div className="relative z-10 flex items-center justify-between">
@@ -1800,7 +1800,7 @@ export function SellerProfileScreen() {
 
       <div className="flex-1 overflow-y-auto pb-24" style={{ scrollbarWidth: "none" }}>
         {/* Store card */}
-        <div className="px-5 -mt-12 mb-5">
+        <div className="px-5 mb-5">
           <div className="glass-card-strong rounded-3xl p-5 shadow-2xl">
             <div className="flex items-center gap-4 mb-4">
               <div className="w-16 h-16 rounded-2xl sky-gradient flex items-center justify-center shadow-lg ring-4 ring-white/50 shrink-0">

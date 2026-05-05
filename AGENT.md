@@ -280,6 +280,12 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Added backend route tests for buyer order detail auth/role enforcement, own-order fetch, another-buyer isolation, missing-order 404, selected pickup date/time, and pickup location in the response.
 - Added rendered tests for existing selected-order QR rendering, id-only order-detail recovery, loading state, error + retry, pickup location display, and safe fallback behavior.
 - Verification passed after Task 036: `corepack pnpm prisma validate`, `corepack pnpm prisma generate`, `corepack pnpm test` (12 files, 204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 040 completed for fixing SellerProfileScreen layout clipping.
+- Audited the `SellerProfileScreen` layout and identified that negative top margin on the profile card container inside an `overflow-y-auto` parent was causing the top of the card to be clipped by the browser.
+- Fixed the clipping by removing the `-mt-12` negative margin from the store card container in `components/screens/seller-screens.tsx`.
+- Adjusted the blue header's bottom padding from `pb-20` to `pb-8` to maintain a balanced visual spacing without the negative margin overlap.
+- Verified that the avatar, initials, business name, and badges are now fully visible and no longer clipped.
+- Verification passed: `corepack pnpm test` (204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
 
 ## Finished
 - Task 001: React/Next marketplace is buildable and type-checkable.
@@ -380,7 +386,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 036: Completed and verified.
+- Task 040: Completed and verified.
 
 ## Next Recommended Work
 - Task 037: Choose the next narrow backend-backed workflow, likely buyer profile or production migration history, and keep browser/e2e coverage as a separate scoped task.
