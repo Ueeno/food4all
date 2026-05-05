@@ -295,6 +295,19 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Updated `test/api-fetch-mock.ts` and `api-backed-services.test.ts` to use real profile data and match the updated category/label behavior.
 - Updated `marketplace-flows.test.tsx` to handle the new initialization loading state and updated labels in seller add-product tests.
 - Verification passed: `corepack pnpm test` (204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+- 2026-05-05: Task 042 final Chrome QA walkthrough completed.
+- Verified buyer flow: registration, login, role selection, product browsing, cart management, checkout, order history, and profile data display.
+- Verified seller flow: registration, login, role selection, dashboard metrics, product management (add/edit/delete), order management, reports, profile status toggle, and layout.
+- Identified bugs:
+    - Hardcoded greeting "Maria Santos" on buyer home screen.
+    - Hardcoded business name "Magsaysay Meat Depot" on seller dashboard.
+    - Missing "Verify" button in seller bottom navigation (expected in center nav as per QA checklist).
+    - Missing deletion confirmation for seller products.
+- Identified polish needs:
+    - Replace hardcoded names with authenticated user/profile data.
+    - Adjust seller bottom nav to include "Verify" (QR scan) as a primary action.
+- Verification passed: `corepack pnpm test` (204 tests), `corepack pnpm lint`, `corepack pnpm typecheck`, and `corepack pnpm build`.
+
 
 ## Finished
 - Task 001: React/Next marketplace is buildable and type-checkable.
@@ -334,6 +347,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Task 036: Buyer pickup QR can recover order detail from `GET /api/orders/[id]` using selected order id, with buyer-only ownership enforcement and pickup location shown where derivable.
 - Task 040: SellerProfileScreen layout clipping fixed and verified.
 - Task 041: Seller add-product static categories and profile fallbacks removed and verified.
+- Task 042: Final Chrome QA walkthrough completed and documented.
 - `build` passes with TypeScript errors no longer hidden.
 - `lint` passes with no warnings or errors.
 - `typecheck` passes.
@@ -397,8 +411,10 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 041: Completed and verified.
+- Task 042: Completed and verified.
+
 
 ## Next Recommended Work
-- Task 037: Choose the next narrow backend-backed workflow, likely buyer profile or production migration history, and keep browser/e2e coverage as a separate scoped task.
+- Task 043: Fix seller navigation to include "Verify" (QR scan) as a primary action in the bottom nav.
+- Task 044: Replace hardcoded names with authenticated user/profile data on buyer/seller dashboards.
 - Future: Profile hardening, production deployment readiness, and browser/e2e coverage as separate scoped tasks.
