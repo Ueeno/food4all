@@ -411,7 +411,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 045: Completed and verified. Added seller order notification badge on navigation and dashboard, ensuring real-time updates after order status changes.
+- Task 046: Completed and verified. Created comprehensive demo script and presentation notes in `docs/demo-script.md`, highlighting pre-seeded accounts and known limitations.
 
 ## Next Recommended Work
-- Future: Fix seller navigation to include "Verify" (QR scan) as a primary action in the bottom nav, profile hardening, production deployment readiness.
+- Future: Production deployment readiness, real image upload integration, payment gateway implementation, and real-time notification support.

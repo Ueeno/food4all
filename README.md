@@ -123,6 +123,10 @@ corepack pnpm lint
 corepack pnpm test
 ```
 
+## Demo & Presentation
+
+A structured walkthrough for demonstrating the application's key features can be found in the [Demo Script](docs/demo-script.md).
+
 ## API Features
 
 ### Implemented Features (SQL-Backed)
