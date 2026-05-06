@@ -1559,16 +1559,34 @@ describe("rendered remaining seller mock flows", () => {
     expect(screen.getByRole("switch", { name: /store open/i })).toHaveAttribute("aria-checked", "true")
   })
 
-  it("deletes seller products through the seller service", async () => {
+  it("deletes seller products after confirmation", async () => {
     const fetchMock = installMarketplaceFetchMock()
 
     renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
 
     expect(await screen.findByText("Chicken Nuggets Supreme")).toBeInTheDocument()
 
+    // Click trash icon
     fireEvent.click(
       screen.getByRole("button", { name: /delete chicken nuggets supreme/i }),
     )
+
+    // Verify confirmation prompt
+    expect(screen.getByText("Delete Product?")).toBeInTheDocument()
+    expect(screen.getAllByText("Chicken Nuggets Supreme").length).toBeGreaterThan(1)
+
+    // Test Cancel
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }))
+    expect(screen.queryByText("Delete Product?")).not.toBeInTheDocument()
+    expect(screen.getByText("Chicken Nuggets Supreme")).toBeInTheDocument()
+
+    // Click trash icon again
+    fireEvent.click(
+      screen.getByRole("button", { name: /delete chicken nuggets supreme/i }),
+    )
+
+    // Confirm Delete
+    fireEvent.click(screen.getByRole("button", { name: /delete product/i }))
 
     await waitFor(() => {
       expect(screen.queryByText("Chicken Nuggets Supreme")).not.toBeInTheDocument()
@@ -1579,5 +1597,27 @@ describe("rendered remaining seller mock flows", () => {
       "/api/seller/products/p3",
       "/api/seller/products",
     ])
+  })
+
+  it("shows a visible error if seller product deletion fails", async () => {
+    const baseFetch = installMarketplaceFetchMock()
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = fetchCallPath(input)
+      if (path === "/api/seller/products/p3" && init?.method === "DELETE") {
+        return Promise.resolve(apiErrorResponse("SERVER_ERROR", "Failed to delete product.", 500))
+      }
+      return baseFetch(input, init)
+    })
+
+    vi.stubGlobal("fetch", fetchMock)
+    renderWithAppState(<SellerProductsScreen />, <SeedRole role="seller" />)
+
+    expect(await screen.findByText("Chicken Nuggets Supreme")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /delete chicken nuggets supreme/i }))
+    fireEvent.click(screen.getByRole("button", { name: /delete product/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to delete product.")
+    expect(screen.getAllByText("Chicken Nuggets Supreme").length).toBeGreaterThan(1)
   })
 })

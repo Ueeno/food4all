@@ -651,6 +651,7 @@ export function SellerProductsScreen() {
   const [loading, setLoading] = useState(true)
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [confirmDeleteProduct, setConfirmDeleteProduct] = useState<Product | null>(null)
   const [editForm, setEditForm] = useState<SellerProductForm | null>(null)
   const [editErrors, setEditErrors] = useState<SellerProductFormErrors>({})
   const [savingEdit, setSavingEdit] = useState(false)
@@ -687,18 +688,29 @@ export function SellerProductsScreen() {
     return nextProducts
   }
 
-  const handleDelete = async (product: Product) => {
-    setDeletingProductId(product.id)
+  const handleDelete = (product: Product) => {
+    setConfirmDeleteProduct(product)
+    setActionError("")
+    setActionMessage("")
+  }
+
+  const executeDelete = async () => {
+    if (!confirmDeleteProduct) return
+
+    setDeletingProductId(confirmDeleteProduct.id)
     setActionError("")
     setActionMessage("")
 
     try {
-      await deleteProduct(product.id)
+      await deleteProduct(confirmDeleteProduct.id)
       await refreshProducts()
-      setActionMessage(`${product.name} was deleted.`)
+      setActionMessage(`${confirmDeleteProduct.name} was deleted.`)
+      setConfirmDeleteProduct(null)
     } catch (error) {
       setActionError(
-        isApiClientError(error) ? error.message : `${product.name} could not be deleted.`,
+        isApiClientError(error)
+          ? error.message
+          : `${confirmDeleteProduct.name} could not be deleted.`,
       )
     } finally {
       setDeletingProductId(null)
@@ -805,6 +817,46 @@ export function SellerProductsScreen() {
           >
             {actionError || actionMessage}
           </div>
+        )}
+        {confirmDeleteProduct && (
+          <section className="mb-4 glass-card-strong rounded-3xl p-5 shadow-xl space-y-4 border-2 border-red-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground text-sm">Delete Product?</h3>
+                <p className="text-[10px] text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-3 bg-red-50/30">
+              <p className="text-xs font-bold text-foreground">{confirmDeleteProduct.name}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">₱{confirmDeleteProduct.discountedPrice} · {confirmDeleteProduct.quantity} left</p>
+            </div>
+
+            <div className="flex gap-2">
+              <GlassButton
+                variant="outline"
+                size="md"
+                fullWidth
+                disabled={!!deletingProductId}
+                onClick={() => setConfirmDeleteProduct(null)}
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                variant="primary"
+                size="md"
+                fullWidth
+                loading={!!deletingProductId}
+                onClick={executeDelete}
+                className="!bg-red-500 !border-red-600 hover:!bg-red-600"
+              >
+                Delete Product
+              </GlassButton>
+            </div>
+          </section>
         )}
         {editingProduct && editForm && (
           <section className="mb-4 glass-card-strong rounded-3xl p-5 shadow-xl space-y-3">
@@ -975,7 +1027,7 @@ export function SellerProductsScreen() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleDelete(product)}
+                      onClick={() => handleDelete(product)}
                       disabled={deletingProductId === product.id}
                       className="w-7 h-7 glass-card rounded-xl flex items-center justify-center hover:bg-red-50/60 transition-colors disabled:opacity-60"
                       aria-label={`Delete ${product.name}`}>

@@ -411,8 +411,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 043: Completed and verified. Dynamic greetings implemented in Buyer Home and Seller Dashboard using authenticated user and seller profile data.
+- Task 044: Completed and verified. Added confirmation step before seller product deletion with loading and error states.
 
 ## Next Recommended Work
-- Task 044: Fix seller navigation to include "Verify" (QR scan) as a primary action in the bottom nav.
-- Future: Profile hardening, production deployment readiness, and browser/e2e coverage as separate scoped tasks.
+- Future: Fix seller navigation to include "Verify" (QR scan) as a primary action in the bottom nav, profile hardening, production deployment readiness.
