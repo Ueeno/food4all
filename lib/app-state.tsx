@@ -43,6 +43,7 @@ import {
   removeFromCart as removeFromCartService,
   updateCartItem as updateCartItemService,
 } from "@/lib/services/cart-service"
+import { getSellerDashboard } from "@/lib/services/seller-service"
 
 export type { AuthRole, AuthStatus, AuthUser, CartItem, UserRole }
 export type { Screen }
@@ -83,6 +84,8 @@ interface AppState {
   selectPickupSlot: (slot: PickupSlotSelection) => void
   cartCount: number
   cartTotal: number
+  sellerOrderCount: number
+  refreshSellerOrderCount: () => Promise<void>
 }
 
 const AppStateContext = createContext<AppState | null>(null)
@@ -223,6 +226,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [selectedPickupSlot, setSelectedPickupSlot] = useState<PickupSlotSelection>(() =>
     createPickupSlotSelection(),
   )
+  const [sellerOrderCount, setSellerOrderCount] = useState(0)
   const skipStorageHydrationRef = useRef(false)
   const cartTouchedRef = useRef(false)
   const currentUserRef = useRef<AuthUser | null>(currentUser)
@@ -311,6 +315,44 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadBuyerCart()
+
+    return () => {
+      ignore = true
+    }
+  }, [currentUser, selectedRole])
+
+  const refreshSellerOrderCount = useCallback(async () => {
+    if (!currentUserRef.current || selectedRoleRef.current !== "seller") {
+      setSellerOrderCount(0)
+      return
+    }
+
+    try {
+      const data = await getSellerDashboard()
+      setSellerOrderCount(data.pendingOrders.length)
+    } catch {
+      // Stay silent or set to 0 if unreachable
+    }
+  }, [])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function updateCount() {
+      if (!currentUser || selectedRole !== "seller") {
+        setSellerOrderCount(0)
+        return
+      }
+
+      try {
+        const data = await getSellerDashboard()
+        if (!ignore) setSellerOrderCount(data.pendingOrders.length)
+      } catch {
+        if (!ignore) setSellerOrderCount(0)
+      }
+    }
+
+    void updateCount()
 
     return () => {
       ignore = true
@@ -600,6 +642,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         selectPickupSlot,
         cartCount,
         cartTotal,
+        sellerOrderCount,
+        refreshSellerOrderCount,
       }}
     >
       {children}

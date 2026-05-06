@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 
 export function SellerDashboardScreen() {
-  const { navigate } = useAppState()
+  const { navigate, refreshSellerOrderCount } = useAppState()
 
   const [dashboard, setDashboard] = useState<SellerDashboard | null>(null)
   const [profile, setProfile] = useState<Seller | null>(null)
@@ -51,6 +51,7 @@ export function SellerDashboardScreen() {
 
         setDashboard(nextDashboard)
         setProfile(nextProfile)
+        void refreshSellerOrderCount()
       } catch {
         if (!ignore) {
           setError("Failed to load dashboard data.")
@@ -67,7 +68,7 @@ export function SellerDashboardScreen() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [refreshSellerOrderCount])
 
   if (loading || !dashboard) {
     return (

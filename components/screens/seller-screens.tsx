@@ -1081,6 +1081,7 @@ export function SellerOrdersScreen() {
   const [retryCount, setRetryCount] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [actionError, setActionError] = useState("")
+  const { refreshSellerOrderCount } = useAppState()
 
   useEffect(() => {
     let ignore = false
@@ -1133,6 +1134,7 @@ export function SellerOrdersScreen() {
       setActionError("")
       const updatedOrder = await updateSellerOrderStatus(orderId, newStatus)
       setAllOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)))
+      void refreshSellerOrderCount()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to update order status.")
     } finally {
@@ -1308,6 +1310,7 @@ export function SellerVerifyPickupScreen() {
   const [scanActive, setScanActive] = useState(false)
   const [verification, setVerification] = useState<Order | null>(null)
   const [verificationError, setVerificationError] = useState("")
+  const { refreshSellerOrderCount } = useAppState()
 
   const handleVerify = async () => {
     const normalizedCode = code.trim().toUpperCase()
@@ -1334,6 +1337,7 @@ export function SellerVerifyPickupScreen() {
         setVerification(result.order ?? null)
         setCode(result.code)
         setVerified(true)
+        void refreshSellerOrderCount()
         return
       }
 

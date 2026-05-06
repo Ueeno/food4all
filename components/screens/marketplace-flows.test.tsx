@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AppStateProvider,
@@ -1619,5 +1619,17 @@ describe("rendered remaining seller mock flows", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to delete product.")
     expect(screen.getAllByText("Chicken Nuggets Supreme").length).toBeGreaterThan(1)
+  })
+
+  it("renders seller order notification badge in bottom nav", async () => {
+    installMarketplaceFetchMock()
+
+    renderWithAppState(<SellerDashboardScreen />, <SeedRole role="seller" />)
+
+    // The mock data has 2 pending orders (reserved/preparing)
+    await waitFor(() => {
+      const ordersBtn = screen.getByRole("button", { name: /^orders$/i })
+      expect(within(ordersBtn).getByText("2")).toBeInTheDocument()
+    })
   })
 })

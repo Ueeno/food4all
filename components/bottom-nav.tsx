@@ -28,7 +28,7 @@ const SELLER_ITEMS: NavItem[] = [
 ]
 
 export function BottomNav() {
-  const { screen, navigate, role, cartCount } = useAppState()
+  const { screen, navigate, role, cartCount, sellerOrderCount } = useAppState()
   const items = role === "seller" ? SELLER_ITEMS : BUYER_ITEMS
 
   return (
@@ -60,6 +60,11 @@ export function BottomNav() {
                 {isCart && cartCount > 0 && (
                   <span className="absolute -top-2 -right-2 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 leading-none shadow">
                     {cartCount > 9 ? "9+" : cartCount}
+                  </span>
+                )}
+                {role === "seller" && item.screen === "seller-orders" && sellerOrderCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[16px] h-4 bg-primary text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 leading-none shadow border border-white/20">
+                    {sellerOrderCount > 9 ? "9+" : sellerOrderCount}
                   </span>
                 )}
               </div>

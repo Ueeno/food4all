@@ -411,7 +411,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 044: Completed and verified. Added confirmation step before seller product deletion with loading and error states.
+- Task 045: Completed and verified. Added seller order notification badge on navigation and dashboard, ensuring real-time updates after order status changes.
 
 ## Next Recommended Work
 - Future: Fix seller navigation to include "Verify" (QR scan) as a primary action in the bottom nav, profile hardening, production deployment readiness.
