@@ -93,7 +93,7 @@ describe("rendered auth screens", () => {
       LOCAL_STORAGE_KEYS.authUser,
       JSON.stringify({
         id: "mock-buyer-food4all-local",
-        name: "FOOD4ALL User",
+        name: "Test Buyer",
         email: "buyer@food4all.local",
         role: "buyer",
       }),

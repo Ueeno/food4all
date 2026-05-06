@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { useAppState } from "@/lib/app-state"
@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 
 export function BuyerHomeScreen() {
-  const { navigate, selectProduct } = useAppState()
+  const { navigate, selectProduct, currentUser } = useAppState()
   const [categories, setCategories] = useState<Category[]>([])
   const [featured, setFeatured] = useState<Product[]>([])
   const [hotDeals, setHotDeals] = useState<Product[]>([])
@@ -79,7 +79,9 @@ export function BuyerHomeScreen() {
         <div className="relative z-10 flex items-center justify-between mb-3">
           <div>
             <p className="text-white/65 text-xs font-medium">Good morning,</p>
-            <h2 className="text-white text-[17px] font-bold leading-tight">Maria Santos</h2>
+            <h2 className="text-white text-[17px] font-bold leading-tight">
+              {currentUser?.name || "FOOD4ALL Buyer"}
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -98,7 +100,16 @@ export function BuyerHomeScreen() {
               onClick={() => navigate("buyer-profile")}
             >
               <div className="w-full h-full sky-gradient flex items-center justify-center">
-                <span className="text-white font-bold text-sm">MS</span>
+                <span className="text-white font-bold text-sm">
+                  {currentUser?.name
+                    ? currentUser.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2)
+                    : "FB"}
+                </span>
               </div>
             </button>
           </div>

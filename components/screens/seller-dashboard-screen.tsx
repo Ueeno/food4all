@@ -5,8 +5,8 @@ import { useEffect, useState } from "react"
 import { useAppState } from "@/lib/app-state"
 import { BottomNav } from "@/components/bottom-nav"
 import { AppButton, DashboardMetricCard, LoadingView } from "@/components/food4all"
-import { getSellerDashboard } from "@/lib/services/seller-service"
-import type { SellerDashboard, SellerDashboardMetricKey } from "@/lib/types"
+import { getSellerDashboard, getSellerProfile } from "@/lib/services/seller-service"
+import type { SellerDashboard, SellerDashboardMetricKey, Seller } from "@/lib/types"
 import {
   Bell,
   TrendingUp,
@@ -24,6 +24,7 @@ export function SellerDashboardScreen() {
   const { navigate } = useAppState()
 
   const [dashboard, setDashboard] = useState<SellerDashboard | null>(null)
+  const [profile, setProfile] = useState<Seller | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,14 +42,18 @@ export function SellerDashboardScreen() {
       try {
         setError(null)
         setLoading(true)
-        const nextDashboard = await getSellerDashboard()
+        const [nextDashboard, nextProfile] = await Promise.all([
+          getSellerDashboard(),
+          getSellerProfile(),
+        ])
 
         if (ignore) return
 
         setDashboard(nextDashboard)
-      }catch {
+        setProfile(nextProfile)
+      } catch {
         if (!ignore) {
-          setError("Failed to load dashboard metrics.")
+          setError("Failed to load dashboard data.")
         }
       } finally {
         if (!ignore) {
@@ -77,9 +82,12 @@ export function SellerDashboardScreen() {
               onClick={() => {
                 setLoading(true)
                 setError(null)
-                getSellerDashboard()
-                  .then(setDashboard)
-                  .catch(() => setError("Failed to load dashboard metrics."))
+                Promise.all([getSellerDashboard(), getSellerProfile()])
+                  .then(([d, p]) => {
+                    setDashboard(d)
+                    setProfile(p)
+                  })
+                  .catch(() => setError("Failed to load dashboard data."))
                   .finally(() => setLoading(false))
               }}
             >
@@ -106,7 +114,9 @@ export function SellerDashboardScreen() {
         <div className="relative z-10 flex items-center justify-between mb-2">
           <div>
             <p className="text-white/70 text-xs font-medium">Seller Dashboard</p>
-            <h2 className="text-white text-xl font-black">Magsaysay Meat Depot</h2>
+            <h2 className="text-white text-xl font-black">
+              {profile?.businessName || "Seller Dashboard"}
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -122,8 +132,10 @@ export function SellerDashboardScreen() {
           </div>
         </div>
         <div className="relative z-10 flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-white/80 text-xs">Store is Open Â· Poblacion District, Davao</span>
+          <div className={`w-2 h-2 rounded-full animate-pulse ${profile?.isOpen ? "bg-green-400" : "bg-red-400"}`} />
+          <span className="text-white/80 text-xs">
+            {profile?.isOpen ? "Store is Open" : "Store is Closed"} · {profile?.address || "Davao City"}
+          </span>
         </div>
       </div>
 

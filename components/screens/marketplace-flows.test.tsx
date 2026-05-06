@@ -20,6 +20,7 @@ import {
 } from "@/components/screens/buyer-pickup-screen"
 import { BuyerProductDetailScreen } from "@/components/screens/buyer-product-detail-screen"
 import { BuyerProductListScreen } from "@/components/screens/buyer-products-screen"
+import { BuyerHomeScreen } from "@/components/screens/buyer-home-screen"
 import { SellerDashboardScreen } from "@/components/screens/seller-dashboard-screen"
 import {
   SellerAddProductScreen,
@@ -252,6 +253,14 @@ afterEach(() => {
 })
 
 describe("rendered buyer marketplace flow", () => {
+  it("renders buyer home greeting from authenticated user data", async () => {
+    renderWithAppState(<BuyerHomeScreen />, <SeedRole role="buyer" />)
+
+    expect(await screen.findByText("Good morning,")).toBeInTheDocument()
+    expect(screen.getByText("Test Buyer")).toBeInTheDocument()
+    expect(screen.getByText("TB")).toBeInTheDocument()
+  })
+
   it("renders buyer product cards from the product service boundary", async () => {
     renderWithAppState(<BuyerProductListScreen />, <SeedRole role="buyer" />)
 
@@ -846,7 +855,7 @@ describe("rendered remaining buyer flows", () => {
     }, { timeout: 3000 })
 
     // Expect authenticated user data from the seeded test fixture
-    expect(screen.getByRole("heading", { name: /FOOD4ALL User/i })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Test Buyer/i })).toBeInTheDocument()
     // The seeded buyer has email "buyer@food4all.local" - this is the real authenticated user data, not a fallback
     expect(screen.getByText("buyer@food4all.local")).toBeInTheDocument()
 
@@ -879,13 +888,22 @@ describe("rendered remaining buyer flows", () => {
 })
 
 describe("rendered seller marketplace flow", () => {
-  it("renders seller dashboard metrics from the mock service", async () => {
+  it("renders seller dashboard metrics and profile from mock services", async () => {
+    const fetchMock = installMarketplaceFetchMock()
     renderWithAppState(<SellerDashboardScreen />, <SeedRole role="seller" />)
 
-    expect(await screen.findByText("Today's Revenue")).toBeInTheDocument()
+    expect(await screen.findByText("Seller Dashboard")).toBeInTheDocument()
+    expect(screen.getByText("SQL Magsaysay Meat Depot")).toBeInTheDocument()
+    expect(screen.getByText(/Store is Open/)).toBeInTheDocument()
+    expect(screen.getByText(/SQL Magsaysay Market/)).toBeInTheDocument()
+
+    expect(screen.getByText("Today's Revenue")).toBeInTheDocument()
     expect(screen.getByText("Pending Orders")).toBeInTheDocument()
     expect(screen.getByText("Items Expiring")).toBeInTheDocument()
     expect(screen.getByText("Total Sales")).toBeInTheDocument()
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/dashboard", expect.any(Object))
+    expect(fetchMock).toHaveBeenCalledWith("/api/seller/profile", expect.any(Object))
   })
 
   it("renders seller products from the backend-backed seller service", async () => {

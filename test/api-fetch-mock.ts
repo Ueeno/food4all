@@ -266,7 +266,9 @@ export function installMarketplaceFetchMock() {
           : email === "seller@food4all.local"
             ? "seller"
             : null
-      currentUser = toApiUser(email, { name: role ? "FOOD4ALL User" : "API Login User", role })
+      const name =
+        role === "buyer" ? "Test Buyer" : role === "seller" ? "Test Seller" : "API Login User"
+      currentUser = toApiUser(email, { name, role })
 
       return apiSuccessResponse({ user: { ...currentUser } })
     }
