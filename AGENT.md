@@ -411,7 +411,7 @@ This root task log was created during Task 001 because no project-root `AGENT.md
 - Backend architecture choices are now partially implemented for local development and should still be revisited before production database/deployment work.
 
 ## Current Task
-- Task 046: Completed and verified. Created comprehensive demo script and presentation notes in `docs/demo-script.md`, highlighting pre-seeded accounts and known limitations.
+- Task 047: Completed and verified. Shifted app from iPhone-style frame to Android-first full-bleed PWA design on mobile. Fixed viewport clipping, improved scrolling, and added PWA manifest.
 
 ## Next Recommended Work
 - Future: Production deployment readiness, real image upload integration, payment gateway implementation, and real-time notification support.

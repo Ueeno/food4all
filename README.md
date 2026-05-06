@@ -125,7 +125,7 @@ corepack pnpm test
 
 ## Demo & Presentation
 
-A structured walkthrough for demonstrating the application's key features can be found in the [Demo Script](docs/demo-script.md).
+A structured walkthrough for demonstrating the application's key features can be found in the [Demo Script](docs/demo-script.md). The application is optimized for an **Android-first mobile experience** via Chrome.
 
 ## API Features
 

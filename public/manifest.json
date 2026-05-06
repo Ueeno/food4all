@@ -1,0 +1,22 @@
+{
+  "name": "FOOD4ALL",
+  "short_name": "FOOD4ALL",
+  "description": "Davao City's marketplace for discounted bulk processed foods.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5FAFF",
+  "theme_color": "#38a8e8",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

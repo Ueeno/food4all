@@ -6,6 +6,9 @@ This guide provides a structured walkthrough for demonstrating the FOOD4ALL mark
 
 To ensure a smooth demo, it is recommended to run `corepack pnpm db:reset` beforehand to have a clean, pre-seeded state.
 
+> [!TIP]
+> **Recommended Environment:** This app is optimized for **Android Chrome** (mobile view). For the best presentation experience, use Chrome DevTools mobile emulation (e.g., Pixel 7) or a physical Android device.
+
 ### Pre-seeded Accounts
 *   **Buyer Account**
     *   **Email:** `buyer@food4all.local`

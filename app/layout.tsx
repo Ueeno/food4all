@@ -15,6 +15,7 @@ export const metadata: Metadata = {
   generator: 'v0.app',
   keywords: ['food', 'bulk food', 'Davao City', 'discounted food', 'marketplace', 'hotdogs', 'frozen food'],
   authors: [{ name: 'FOOD4ALL' }],
+  manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {
@@ -33,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} bg-background`}>
-      <body className="font-sans antialiased h-[100dvh] sm:h-auto sm:min-h-screen overflow-hidden sm:overflow-auto">
+      <body className="font-sans antialiased bg-background overflow-x-hidden">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

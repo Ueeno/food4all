@@ -67,8 +67,8 @@ function AppRouter() {
     <div
       className="
         relative overflow-hidden bg-background
-        w-full h-[100dvh]
-        sm:w-[480px] sm:max-h-[100dvh] sm:rounded-[2.5rem] sm:shadow-[0_0_80px_oklch(0.45_0.18_232_/_0.3),0_0_0_1px_oklch(1_0_0_/_0.15)]
+        w-full h-[100dvh] flex flex-col
+        sm:w-[480px] sm:h-[100dvh] sm:rounded-[2.5rem] sm:shadow-[0_0_80px_oklch(0.45_0.18_232_/_0.3),0_0_0_1px_oklch(1_0_0_/_0.15)]
         lg:w-[430px] lg:max-h-[900px] lg:rounded-[3rem]
       "
     >
